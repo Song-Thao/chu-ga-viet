@@ -14,14 +14,17 @@ const Videos = [
 export default function HomePage() {
   const [gaMoiDang, setGaMoiDang] = useState<any[]>([]);
   const [gaNoiBat, setGaNoiBat] = useState<any[]>([]);
+  const [shopeeLink, setShopeeLink] = useState('https://s.shopee.vn/AKVzuqq0dk');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
     try {
+      // Lấy config shopee link
+      const { data: cfg } = await supabase.from('config').select('shopee_link').single();
+      if (cfg?.shopee_link) setShopeeLink(cfg.shopee_link);
+
       // Gà mới đăng
       const { data: moiDang } = await supabase
         .from('ga')
@@ -30,7 +33,7 @@ export default function HomePage() {
         .order('created_at', { ascending: false })
         .limit(4);
 
-      // Gà nổi bật (nhiều view nhất)
+      // Gà nổi bật
       const { data: noiBat } = await supabase
         .from('ga')
         .select('id, ten, loai_ga, gia, khu_vuc, view_count, ga_images(url, is_primary), ai_analysis(total_score)')
@@ -55,7 +58,6 @@ export default function HomePage() {
   const GaCard = ({ ga, idx }: { ga: any; idx: number }) => {
     const anhChinh = ga.ga_images?.find((i: any) => i.is_primary)?.url || ga.ga_images?.[0]?.url;
     const aiScore = ga.ai_analysis?.[0]?.total_score;
-
     return (
       <Link href={`/ga/${ga.id}`}>
         <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer">
@@ -70,9 +72,7 @@ export default function HomePage() {
             <div className="text-[#8B1A1A] font-black text-sm mt-1">{formatGia(parseInt(ga.gia))}</div>
             <div className="flex justify-between items-center mt-2">
               <span className="text-xs text-gray-500">📍 {ga.khu_vuc}</span>
-              {aiScore && (
-                <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-bold">⭐ {aiScore}</span>
-              )}
+              {aiScore && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-bold">⭐ {aiScore}</span>}
             </div>
           </div>
         </div>
@@ -94,8 +94,8 @@ export default function HomePage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-4">
 
-      {/* BANNER */}
-      <div className="grid grid-cols-3 gap-3 mb-6 rounded-xl overflow-hidden">
+      {/* BANNER TOP */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-gradient-to-r from-red-900 to-red-700 text-white p-4 rounded-xl flex flex-col justify-center">
           <div className="text-xs font-bold text-yellow-400 mb-1">THUỐC BỔ GÀ</div>
           <div className="font-black text-lg leading-tight">CHIẾN SIÊU LỰC</div>
@@ -112,6 +112,22 @@ export default function HomePage() {
           <div className="text-xs mt-1 text-gray-300">Dinh dưỡng cao cấp</div>
         </div>
       </div>
+
+      {/* SHOPEE AFFILIATE BANNER */}
+      <a href={shopeeLink} target="_blank" rel="noopener noreferrer"
+        className="block mb-6 cursor-pointer group">
+        <div className="bg-gradient-to-r from-orange-500 to-orange-400 rounded-xl p-4 flex items-center gap-4 hover:opacity-95 transition shadow-sm">
+          <div className="text-4xl">🛒</div>
+          <div className="flex-1">
+            <div className="font-black text-white text-lg">Mua phụ kiện gà chọi trên Shopee</div>
+            <div className="text-orange-100 text-sm mt-0.5">Thức ăn • Thuốc bổ • Dụng cụ chăn nuôi • Giao hàng toàn quốc</div>
+          </div>
+          <div className="bg-white text-orange-500 font-black px-4 py-2 rounded-full text-sm group-hover:scale-105 transition flex items-center gap-1">
+            <span>Mua ngay</span>
+            <span>→</span>
+          </div>
+        </div>
+      </a>
 
       {/* SEARCH */}
       <div className="bg-white rounded-xl p-4 mb-6 shadow-sm flex flex-wrap gap-3">
@@ -145,46 +161,51 @@ export default function HomePage() {
       {/* GÀ MỚI ĐĂNG */}
       <section className="mb-8">
         <div className="flex justify-between items-center mb-3">
-          <h2 className="font-black text-lg text-gray-800 uppercase tracking-wide">🐓 Gà Mới Đăng</h2>
+          <h2 className="font-black text-lg text-gray-800 uppercase">🐓 Gà Mới Đăng</h2>
           <Link href="/cho" className="text-[#8B1A1A] text-sm font-semibold hover:underline">Xem thêm →</Link>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {loading ? (
-            [1,2,3,4].map(i => <SkeletonCard key={i} />)
-          ) : gaMoiDang.length > 0 ? (
-            gaMoiDang.map((ga, idx) => <GaCard key={ga.id} ga={ga} idx={idx} />)
-          ) : (
-            <div className="col-span-4 text-center py-10 text-gray-400">
-              <div className="text-4xl mb-2">🐓</div>
-              <div className="text-sm">Chưa có gà nào. <Link href="/dang-ga" className="text-[#8B1A1A] hover:underline">Đăng bán ngay!</Link></div>
-            </div>
-          )}
+          {loading ? [1,2,3,4].map(i => <SkeletonCard key={i} />) :
+            gaMoiDang.length > 0 ? gaMoiDang.map((ga, idx) => <GaCard key={ga.id} ga={ga} idx={idx} />) : (
+              <div className="col-span-4 text-center py-10 text-gray-400">
+                <div className="text-4xl mb-2">🐓</div>
+                <div className="text-sm">Chưa có gà nào. <Link href="/dang-ga" className="text-[#8B1A1A] hover:underline">Đăng bán ngay!</Link></div>
+              </div>
+            )}
         </div>
       </section>
+
+      {/* SHOPEE INLINE BANNER */}
+      <a href={shopeeLink} target="_blank" rel="noopener noreferrer"
+        className="block mb-8 group">
+        <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4 flex items-center gap-3 hover:border-orange-400 transition">
+          <div className="text-3xl">🧴</div>
+          <div className="flex-1">
+            <div className="font-bold text-orange-800">Shopee — Thuốc & thức ăn gà chọi</div>
+            <div className="text-xs text-orange-600 mt-0.5">Hàng nghìn sản phẩm chăm sóc gà chọi chất lượng cao</div>
+          </div>
+          <div className="text-orange-500 font-bold text-sm group-hover:translate-x-1 transition">Xem →</div>
+        </div>
+      </a>
 
       {/* GÀ NỔI BẬT */}
       <section className="mb-8">
         <div className="flex justify-between items-center mb-3">
-          <h2 className="font-black text-lg text-gray-800 uppercase tracking-wide">🔥 Gà Nổi Bật</h2>
+          <h2 className="font-black text-lg text-gray-800 uppercase">🔥 Gà Nổi Bật</h2>
           <Link href="/cho" className="text-[#8B1A1A] text-sm font-semibold hover:underline">Xem tất cả →</Link>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {loading ? (
-            [1,2,3,4].map(i => <SkeletonCard key={i} />)
-          ) : gaNoiBat.length > 0 ? (
-            gaNoiBat.map((ga, idx) => <GaCard key={ga.id} ga={ga} idx={idx} />)
-          ) : (
-            <div className="col-span-4 text-center py-10 text-gray-400">
-              <div className="text-sm">Chưa có gà nổi bật</div>
-            </div>
-          )}
+          {loading ? [1,2,3,4].map(i => <SkeletonCard key={i} />) :
+            gaNoiBat.length > 0 ? gaNoiBat.map((ga, idx) => <GaCard key={ga.id} ga={ga} idx={idx} />) : (
+              <div className="col-span-4 text-center py-10 text-gray-400 text-sm">Chưa có gà nổi bật</div>
+            )}
         </div>
       </section>
 
       {/* VIDEO */}
       <section className="mb-8">
         <div className="flex justify-between items-center mb-3">
-          <h2 className="font-black text-lg text-gray-800 uppercase tracking-wide">🎬 Video Thực Chiến</h2>
+          <h2 className="font-black text-lg text-gray-800 uppercase">🎬 Video Thực Chiến</h2>
           <Link href="/thu-vien" className="text-[#8B1A1A] text-sm font-semibold hover:underline">Xem thêm →</Link>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -205,22 +226,24 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* BOTTOM */}
+      {/* BOTTOM CTA */}
       <div className="grid grid-cols-2 gap-4 mb-8">
-        <Link href="/thu-vien" className="bg-gradient-to-r from-amber-800 to-amber-700 text-white rounded-xl p-5 flex items-center gap-3 hover:opacity-90 transition">
+        <Link href="/thu-vien"
+          className="bg-gradient-to-r from-amber-800 to-amber-700 text-white rounded-xl p-5 flex items-center gap-3 hover:opacity-90 transition">
           <div className="text-3xl">📚</div>
           <div>
             <div className="font-black">BÀI VIẾT HƯỚNG DẪN</div>
             <div className="text-xs text-amber-200 mt-1">Kiến thức từ chuyên gia</div>
           </div>
         </Link>
-        <Link href="/cho" className="bg-gradient-to-r from-red-900 to-red-800 text-white rounded-xl p-5 flex items-center gap-3 hover:opacity-90 transition">
-          <div className="text-3xl">🏆</div>
+        <a href={shopeeLink} target="_blank" rel="noopener noreferrer"
+          className="bg-gradient-to-r from-orange-600 to-orange-500 text-white rounded-xl p-5 flex items-center gap-3 hover:opacity-90 transition">
+          <div className="text-3xl">🛍️</div>
           <div>
-            <div className="font-black">TOP NGƯỜI BÁN UY TÍN</div>
-            <div className="text-xs text-red-200 mt-1">Xếp hạng người bán</div>
+            <div className="font-black">PHỤ KIỆN GÀ SHOPEE</div>
+            <div className="text-xs text-orange-100 mt-1">Mua hàng — nhận hoa hồng</div>
           </div>
-        </Link>
+        </a>
       </div>
 
     </div>
