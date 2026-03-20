@@ -126,11 +126,12 @@ export async function PATCH(req: NextRequest) {
     const { action, video_id, user_id, reason } = await req.json();
 
     if (action === 'view') {
-      await supabase.rpc('increment_view', { vid: video_id }).catch(() =>
-        supabase.from('videos').select('view_count').eq('id', video_id).single().then(({ data }) =>
-          supabase.from('videos').update({ view_count: (data?.view_count || 0) + 1 }).eq('id', video_id)
-        )
-      );
+  const { data: v } = await supabase
+    .from('videos').select('view_count').eq('id', video_id).single();
+  await supabase
+    .from('videos').update({ view_count: (v?.view_count || 0) + 1 }).eq('id', video_id);
+  return NextResponse.json({ success: true });
+}
       return NextResponse.json({ success: true });
     }
 
