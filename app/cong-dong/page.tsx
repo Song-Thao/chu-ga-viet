@@ -7,8 +7,15 @@ import Link from 'next/link';
 // ============================================================
 // HELPERS
 // ============================================================
-function getYoutubeId(url: string): string | null {
-  if (!url) return null;
+function getYoutubeId(raw: string): string | null {
+  if (!raw) return null;
+  // Nếu là iframe HTML → extract src trước
+  let url = raw;
+  if (raw.includes('<iframe')) {
+    const srcMatch = raw.match(/src=["']([^"']+)["']/);
+    if (!srcMatch) return null;
+    url = srcMatch[1];
+  }
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
     /youtube\.com\/shorts\/([^&\n?#]+)/,
@@ -47,6 +54,7 @@ interface Post {
   comment_count: number;
   share_count: number;
   report_count: number;
+  image_url?: string;
   status: string;
   created_at: string;
   profiles?: { full_name: string; avatar_url: string };
@@ -79,6 +87,9 @@ export default function CongDongPage() {
   const [sortBy, setSortBy] = useState<'newest' | 'hot'>('newest');
   const [hotPosts, setHotPosts] = useState<Post[]>([]);
   const [featuredVideos, setFeaturedVideos] = useState<any[]>([]);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
   // ── Auth ──────────────────────────────────────────────────
@@ -101,7 +112,7 @@ export default function CongDongPage() {
     const { data: hotData } = await supabase
       .from('posts')
       .select('id, noi_dung, like_count, likes')
-      .neq('status', 'hidden')
+      .or('status.neq.hidden,status.is.null')
       .order('like_count', { ascending: false })
       .limit(5);
     if (hotData) setHotPosts(hotData as Post[]);
@@ -119,7 +130,7 @@ export default function CongDongPage() {
     let query = supabase
       .from('posts')
       .select('*, profiles(full_name, avatar_url)')
-      .neq('status', 'hidden');  // chỉ ẩn bài bị report, còn lại hiện hết
+      .or('status.neq.hidden,status.is.null');
 
     if (sortBy === 'newest') query = query.order('created_at', { ascending: false });
     else query = query.order('like_count', { ascending: false });
@@ -151,13 +162,28 @@ export default function CongDongPage() {
       cleanYoutube = srcMatch ? srcMatch[1] : '';
     }
 
-    // Insert bài viết (không join profiles ngay — tránh lỗi RLS)
+    // Upload ảnh nếu có
+    let uploadedImageUrl = '';
+    if (imageFile) {
+      const ext = imageFile.name.split('.').pop();
+      const fileName = `posts/${Date.now()}.${ext}`;
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from('images')
+        .upload(fileName, imageFile, { upsert: true });
+      if (!uploadErr && uploadData) {
+        const { data: urlData } = supabase.storage.from('images').getPublicUrl(fileName);
+        uploadedImageUrl = urlData.publicUrl;
+      }
+    }
+
+    // Insert bài viết
     const { data, error } = await supabase
       .from('posts')
       .insert({
         user_id: user.id,
-        noi_dung: postContent.trim(),   // tên cột thật trong DB
+        noi_dung: postContent.trim(),
         youtube_url: cleanYoutube,
+        image_url: uploadedImageUrl || null,
         comment_count: 0,
         share_count: 0,
         report_count: 0,
@@ -177,6 +203,7 @@ export default function CongDongPage() {
       const newPost: Post = {
         ...data,
         noi_dung: postContent.trim(),
+        image_url: uploadedImageUrl || null,
         like_count: 0,
         profiles: {
           full_name: user.user_metadata?.full_name || 'Bạn',
@@ -186,6 +213,8 @@ export default function CongDongPage() {
       setPosts(prev => [newPost, ...prev]);
       setPostContent('');
       setPostYoutube('');
+      setImageFile(null);
+      setImagePreview('');
       setShowPopup(false);
     }
     setSubmitting(false);
@@ -283,6 +312,32 @@ export default function CongDongPage() {
               placeholder="Bạn đang nghĩ gì về gà của mình? 🐓"
               style={{ width: '100%', minHeight: 120, border: 'none', outline: 'none', resize: 'none', fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box' }}
             />
+            {/* Upload ảnh */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setImageFile(file);
+                  setImagePreview(URL.createObjectURL(file));
+                }
+              }}
+            />
+            {imagePreview ? (
+              <div style={{ position: 'relative', marginTop: 10 }}>
+                <img src={imagePreview} style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8 }} />
+                <button onClick={() => { setImageFile(null); setImagePreview(''); }}
+                  style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none', borderRadius: '50%', width: 26, height: 26, cursor: 'pointer', fontSize: 14 }}>×</button>
+              </div>
+            ) : (
+              <button onClick={() => fileInputRef.current?.click()}
+                style={{ width: '100%', marginTop: 10, padding: '9px', border: '1.5px dashed #ddd', borderRadius: 8, background: '#fafafa', color: '#888', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                📷 Thêm ảnh
+              </button>
+            )}
             {/* YouTube */}
             <input
               value={postYoutube}
@@ -408,9 +463,10 @@ export default function CongDongPage() {
               <p style={{ color: '#aaa', fontSize: 13 }}>Chưa có video</p>
             ) : featuredVideos.map((v: any) => {
               // Thử các tên cột phổ biến
-              const ytUrl = v.youtube_url || v.url || v.link || v.video_url || '';
-              const ytId = getYoutubeId(ytUrl);
-              const title = v.tieu_de || v.title || v.ten || 'Video';
+              // Thử embed_url trước (đã có src), sau đó youtube_url (có thể là iframe)
+              const ytRaw = v.youtube_url || v.embed_url || v.url || v.link || '';
+              const ytId = getYoutubeId(ytRaw);
+              const title = v.tieu_de || v.title || v.ten || v.noi_dung || 'Video';
               const views = v.luot_xem || v.views || v.view_count || 0;
               return (
                 <div key={v.id} style={{ marginBottom: 12, cursor: 'pointer' }}>
@@ -520,6 +576,11 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
 
       {/* Content */}
       <div style={{ padding: '0 16px 12px', fontSize: 15, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{postText}</div>
+
+      {/* Ảnh đính kèm */}
+      {post.image_url && (
+        <img src={post.image_url} style={{ width: '100%', maxHeight: 400, objectFit: 'cover' }} />
+      )}
 
       {/* YouTube embed */}
       {ytId && (
