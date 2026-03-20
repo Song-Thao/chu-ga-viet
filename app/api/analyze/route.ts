@@ -3,54 +3,93 @@ import OpenAI from 'openai';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// ===== TỪ ĐIỂN VẢY =====
-const VAY_TOT: Record<string, { dac_diem: string; vi_tri: string; y_nghia: string }> = {
-  'Án Thiên':     { dac_diem: 'vảy lớn nổi bật sát gối phía trên',        vi_tri: 'sat_goi',     y_nghia: 'Ra đòn chính xác và hiểm — gà chiến tốt' },
-  'Phủ Địa':     { dac_diem: 'vảy nổi to sát chậu phía dưới chân',       vi_tri: 'sat_chau',    y_nghia: 'Bền bỉ, lì đòn — gà dai sức' },
-  'Huyền Trâm':  { dac_diem: 'vảy nhỏ mọc ngang vị trí cựa',             vi_tri: 'ngang_cua',   y_nghia: 'Đòn độc, khó đoán — gà tài' },
-  'Khai Vương':  { dac_diem: '4 vảy tạo thành hình chữ Vương',            vi_tri: 'chu_vuong',   y_nghia: 'Quý tướng hiếm gặp — rất giá trị' },
-  'Ám Long':     { dac_diem: 'vảy nhỏ ẩn dưới ngón giữa',               vi_tri: 'ngon_giua',   y_nghia: 'Hiếm và hay — giá trị cao' },
-  'Gạc Thập':    { dac_diem: 'vảy xếp hình chữ thập ở chân',             vi_tri: 'chu_thap',    y_nghia: 'Đá tàn, bền — gà chiến lâu dài' },
-  'Song Phủ Đao':{ dac_diem: '2 vảy đối xứng như lưỡi dao hai bên chân', vi_tri: 'doi_xung',    y_nghia: 'Đòn hai bên mạnh — nguy hiểm' },
-  'Tam Tài':     { dac_diem: '3 vảy xếp hàng dọc đều nhau',              vi_tri: 'hang_doc',    y_nghia: 'Cân bằng tốt — gà toàn diện' },
+// ===== TỪ ĐIỂN 92 VẢY ĐẦY ĐỦ =====
+const VAY_DATABASE = {
+  tot: {
+    'Án Thiên': { vi_tri: 'vảy lớn sát đầu gối trên cao nhất hàng Thành/Quách', y_nghia: 'Sức lực bền bỉ, tránh né tài tình, ra đòn chính xác. Rất tốt.' },
+    'Phủ Địa': { vi_tri: 'hình dáng như Án Thiên nhưng đặt dưới cựa sát đầu bốn ngón', y_nghia: 'Tinh nhanh khi chinh chiến, cựa địch khó xuyên thấu. Tốt.' },
+    'Huyền Trâm': { vi_tri: 'vảy nhỏ màu đen tuyền giữa hàng Thành và Quách, ngang với cựa', y_nghia: 'Đâm nhiều chém dữ, hay hỏng mắt đối thủ. Tốt.' },
+    'Khai Vương': { vi_tri: '4 vảy dính nhau tạo hình chữ Vương', y_nghia: 'Gà quý tướng. Tốt.' },
+    'Ám Long': { vi_tri: 'vảy nhỏ ẩn ngay ngón giữa trước khi đụng ngón, màu hồng gọi là Ẩn Son', y_nghia: 'Linh Kê - gà quý hiếm.' },
+    'Gạc Thập': { vi_tri: '4 vảy sát nhau (2 hàng Thành + 2 hàng Quách) tạo hình chữ thập ngang hàng cựa', y_nghia: 'Đâm cựa liên hoàn. Rất tốt.' },
+    'Tam Tài': { vi_tri: 'từ sát gối xuống đến vảy thứ 3 có 3 hàng vảy liên tiếp', y_nghia: 'Quý Kê - đòn tài mãnh liệt, đá đồng chạng dễ thắng.' },
+    'Tứ Trực': { vi_tri: 'một chân có Án Thiên, chân kia có Phủ Địa', y_nghia: 'Quý Kê.' },
+    'Song Phủ Đao': { vi_tri: '2 vảy hàng Quách sát cựa, 2 đầu nhọn chỉ vào cựa', y_nghia: 'Nhạy cựa, khôn lanh, trả đòn tức thì.' },
+    'Địa Giáp': { vi_tri: 'vảy nhỏ mọc giữa lòng bàn chân luôn chạm đất', y_nghia: 'Linh Kê.' },
+    'Liên Châu': { vi_tri: 'vảy ngón nội đi thẳng lên quá cựa nhập vào đường thới, thẳng no tròn', y_nghia: 'Dùng cựa rất giỏi.' },
+    'Đại Giáp': { vi_tri: '3 vảy hàng Quách dính lại thành vảy lớn gần cựa', y_nghia: 'Nhiều thế, đâm đòn hiểm độc.' },
+    'Trễ Giáp': { vi_tri: '2 vảy hàng Quách song song sát nhau, đuôi chỉ vào cựa', y_nghia: 'Ra đòn rất nhanh, hay tạt hay quăng.' },
+    'Thập Hậu': { vi_tri: 'hàng hậu và hàng kẽm có 4 vảy tạo hình chữ thập', y_nghia: 'Quý tướng.' },
+    'Thập Độ': { vi_tri: 'hàng độ và hàng kẽm có 4 vảy tạo hình chữ thập', y_nghia: 'Giỏi, đá đồng chạng dễ thắng.' },
+    'Liên Kẽm': { vi_tri: '2 vảy hàng kẽm dính nhau', y_nghia: 'Bảo vệ mạng gà, vừa đánh vừa thủ.' },
+    'Độc Biên': { vi_tri: 'hàng Biên có 1 hàng thẳng từ trên xuống không đứt quãng', y_nghia: 'Gà tốt.' },
+    'Tam Vinh': { vi_tri: 'hàng độ, kẽm đúng cách, biên liên tục, hậu xuống quá cựa', y_nghia: 'Linh Kê.' },
+    'Ngũ Quỷ': { vi_tri: '1 chân có 3 hàng vảy liên tiếp từ gối xuống đến vảy thứ 5', y_nghia: 'Hung ác vô cùng.' },
+    'No Hậu': { vi_tri: 'hàng hậu từ gối không chia đôi, xuống đến cựa vẫn to rõ', y_nghia: 'Thắng trận bền bỉ.' },
+    'Phản Hậu': { vi_tri: 'hàng hậu úp xuống (ngược chiều thường)', y_nghia: 'Quý Kê.' },
+    'Huỳnh Kiều': { vi_tri: 'vảy vấn đóng hàng thứ 2-5, đầu hàng Thành đuôi hàng Quách', y_nghia: 'May độ, có đòn chết gà.' },
+    'Bản Phủ': { vi_tri: 'vảy vấn đầu nhỏ đuôi to hình lưỡi búa, đầu hàng Thành đuôi hàng Quách', y_nghia: 'Rất hay, ăn được kích giáp, yểm long.' },
+    'Kích Giáp': { vi_tri: 'vảy như vấn cán cách 4 hàng từ gối xuống', y_nghia: 'Tướng kê - ra đòn nhanh dũng mãnh, địch thường tử trận.' },
+    'Nghịch Lân': { vi_tri: 'vảy vấn ngang cựa gồm 1 vảy hàng Quách + 2 vảy hàng Thành', y_nghia: 'Thiện nghệ dùng cựa và cưa, cực kỳ uy lực.' },
+    'Giao Long': { vi_tri: 'vảy vấn hàng 2-3 đầu to đuôi nhỏ, đầu hàng Quách đuôi hàng Thành', y_nghia: 'Chuyên chui lòn, cắn gối, đá phá đùi đối thủ.' },
+  },
+  xau: {
+    'Khai Tiền': { vi_tri: '1 vảy hàng Thành nứt ra bất kể trên hay dưới cựa', y_nghia: 'Thời vàng son đã tận, không nên dùng. Rất xấu.' },
+    'Tứ Hoành Khai': { vi_tri: 'dưới gối có 4 vảy nhỏ', y_nghia: 'Kém tài, bở hơi, yếu sức, hay bị mù mắt khi ra trận. Xấu.' },
+    'Dậm Chậu': { vi_tri: '1 vảy nhỏ sát ngón trước khi giáp ngón', y_nghia: 'Xấu.' },
+    'Rọc Chậu': { vi_tri: 'vảy sát chân ngón bị cắt đứt', y_nghia: 'Xấu.' },
+    'Liên Giáp Ngoại': { vi_tri: '2 vảy hàng Thành dính nhau thành 1 vảy lớn', y_nghia: 'Không tốt (trừ từ hàng 4 từ gối xuống).' },
+    'Khai Hậu': { vi_tri: '1 vảy hậu bị nứt vỡ đôi', y_nghia: 'Không tốt.' },
+    'Lộc Điền Ngoại': { vi_tri: 'đường đất giữa Thành Quách mũi quay ra ngoài', y_nghia: 'Hữu dũng vô mưu. Xấu.' },
+    'Kém Hậu': { vi_tri: 'hàng hậu từ gối chia đôi, chưa đến cựa đã nhỏ lăn tăn', y_nghia: 'Không nên dùng.' },
+    'Thất Hậu': { vi_tri: 'hàng hậu từ gối chia 2 hàng hoặc không liền mạch', y_nghia: 'Không nên dùng.' },
+    'Ngậm Thẻ': { vi_tri: '2 hàng vảy đều bỗng có 1 vảy chen vào chia đôi', y_nghia: 'Đá tứ tung, vô đòn vô thế.' },
+  },
 };
 
-const VAY_XAU: Record<string, { dac_diem: string; canh_bao: string }> = {
-  'Tứ Hoành Khai': { dac_diem: '4 vảy nằm ngang cùng cấp',          canh_bao: 'Dễ bỏ chạy giữa trận' },
-  'Dậm Chậu':      { dac_diem: 'vảy đè lên chậu chân',              canh_bao: 'Yếu chân, dễ gãy' },
-  'Rọc Chậu':      { dac_diem: 'vảy cắt ngang chậu',                canh_bao: 'Không bền, mau bỏ' },
-  'Liên Giáp':     { dac_diem: 'nhiều vảy dày sát nhau liên tiếp',  canh_bao: 'Tướng xấu toàn diện' },
-  'Khai Hậu':      { dac_diem: 'vảy mở ở phía sau gót chân',        canh_bao: 'Hay lùi, thiếu tiến công' },
-  'Nát Hàng':      { dac_diem: 'vảy xếp không đều lộn xộn',         canh_bao: 'Không có tướng đặc biệt' },
-};
+// ===== MAPPING LOGIC =====
+function mapVayFromDescription(moTa: string): {
+  ten: string | null;
+  loai: 'tot' | 'xau' | 'thuong';
+  y_nghia: string;
+  tin_cay: number;
+} {
+  const obs = moTa.toLowerCase();
 
-function mapVay(moTaVay: string) {
-  const obs = moTaVay.toLowerCase();
-
-  for (const [ten, data] of Object.entries(VAY_TOT)) {
-    if (obs.includes(ten.toLowerCase()) || obs.includes(data.vi_tri)) {
-      const tinCay = obs.includes('rõ') || obs.includes('xác định') ? 80
-        : obs.includes('dấu hiệu') ? 55 : 40;
-      return { ten, loai: 'tot' as const, y_nghia: data.y_nghia, tin_cay: tinCay };
+  // Kiểm tra từng vảy trong database
+  for (const [ten, data] of Object.entries(VAY_DATABASE.tot)) {
+    const tenLower = ten.toLowerCase();
+    if (obs.includes(tenLower)) {
+      const tinCay = obs.includes('rõ') || obs.includes('xác định') || obs.includes('thấy rõ') ? 85
+        : obs.includes('dấu hiệu') || obs.includes('nghi') ? 55 : 40;
+      return { ten, loai: 'tot', y_nghia: data.y_nghia, tin_cay: tinCay };
+    }
+    // Kiểm tra vị trí mô tả khớp
+    const viTriWords = data.vi_tri.toLowerCase().split(' ').filter(w => w.length > 4);
+    const matchCount = viTriWords.filter(w => obs.includes(w)).length;
+    if (matchCount >= 3) {
+      return { ten, loai: 'tot', y_nghia: data.y_nghia, tin_cay: 50 };
     }
   }
-  for (const [ten, data] of Object.entries(VAY_XAU)) {
+
+  for (const [ten, data] of Object.entries(VAY_DATABASE.xau)) {
     if (obs.includes(ten.toLowerCase())) {
-      return { ten, loai: 'xau' as const, y_nghia: data.canh_bao, tin_cay: 70 };
+      return { ten, loai: 'xau', y_nghia: data.y_nghia, tin_cay: 75 };
     }
   }
+
   return {
-    ten: null, loai: 'thuong' as const, tin_cay: 50,
-    y_nghia: 'Không quan sát thấy vảy quý hay vảy xấu đặc biệt. Gà thuộc dạng vảy phổ thông — giá trị phụ thuộc thể lực, nuôi và luyện.',
+    ten: null, loai: 'thuong', tin_cay: 50,
+    y_nghia: 'Không quan sát thấy vảy quý hay vảy xấu đặc biệt. Vảy thuộc dạng phổ thông — giá trị phụ thuộc thể lực, nuôi dưỡng và luyện tập.',
   };
 }
 
-function tinhDiem(nhanDien: string, mappedVay: ReturnType<typeof mapVay>, doRo: number) {
+function tinhDiem(mat: string, chan: string, longDang: string, mappedVay: ReturnType<typeof mapVayFromDescription>, doRo: number) {
   let s = 5.0;
-  const nd = nhanDien.toLowerCase();
-  if (nd.includes('sáng') || nd.includes('linh hoạt')) s += 0.5;
-  if (nd.includes('khô') || nd.includes('gân nổi')) s += 0.4;
-  if (nd.includes('thẳng') || nd.includes('cân đối')) s += 0.3;
+  const all = `${mat} ${chan} ${longDang}`.toLowerCase();
+  if (all.includes('sáng') || all.includes('linh hoạt') || all.includes('lanh')) s += 0.4;
+  if (all.includes('khô') || all.includes('gân nổi')) s += 0.4;
+  if (all.includes('cân đối') || all.includes('thẳng')) s += 0.3;
   if (mappedVay.loai === 'tot') s += mappedVay.tin_cay >= 75 ? 2.0 : 1.2;
   if (mappedVay.loai === 'xau') s -= 1.5;
   if (doRo < 50) s -= 1.0;
@@ -58,8 +97,8 @@ function tinhDiem(nhanDien: string, mappedVay: ReturnType<typeof mapVay>, doRo: 
   return Math.round(Math.max(3.0, Math.min(10.0, s)) * 10) / 10;
 }
 
-function tinhGia(diem: number, loaiVay: string) {
-  if (loaiVay === 'xau') return '500.000 - 1.500.000';
+function tinhGia(diem: number, loai: string) {
+  if (loai === 'xau') return '500.000 - 1.500.000';
   if (diem >= 9.0) return '15.000.000 - 30.000.000';
   if (diem >= 8.0) return '6.000.000 - 15.000.000';
   if (diem >= 7.0) return '3.000.000 - 6.000.000';
@@ -67,45 +106,52 @@ function tinhGia(diem: number, loaiVay: string) {
   return '500.000 - 1.500.000';
 }
 
-const SYSTEM_PROMPT = `Bạn là chuyên gia phân tích gà chọi Việt Nam. Nhiệm vụ: QUAN SÁT và MÔ TẢ thực tế từ ảnh.
+// ===== SYSTEM PROMPT =====
+const SYSTEM_PROMPT = `Bạn là chuyên gia xem tướng gà chọi Việt Nam với bộ kiến thức 92 loại vảy chuẩn.
 
-QUAN TRỌNG NHẤT:
-- Tất cả ảnh được gửi là CÙNG MỘT CON GÀ, chụp từ nhiều góc khác nhau
-- Không biết trước ảnh nào là mặt, chân hay toàn thân — hãy TỰ NHẬN DIỆN từng ảnh
-- Tổng hợp thông tin từ TẤT CẢ ảnh để phân tích đầy đủ nhất
-- Nếu 2 ảnh cùng chụp chân → lấy ảnh rõ hơn để phân tích vảy
+NHIỆM VỤ: Quan sát và mô tả thực tế — KHÔNG tự đặt tên vảy.
 
-QUY TẮC MÔ TẢ:
-- Chỉ mô tả những gì THỰC SỰ THẤY RÕ
-- KHÔNG tự đặt tên vảy — chỉ mô tả hình dạng, vị trí, kích thước
-- Nếu không rõ → ghi cụ thể lý do không rõ (mờ, góc khuất, thiếu ảnh...)
-- Mỗi lần phân tích phải dùng cách diễn đạt khác, không lặp mẫu
+KIẾN THỨC VỊ TRÍ CHÂN GÀ:
+- Hàng Quách (Nội): theo ngón giữa (ngón ngọ) đi thẳng lên gối
+- Hàng Thành (Ngoại): theo ngón ngoại đi thẳng lên gối  
+- Hàng Thới: theo ngón thới đi lên
+- Hàng Hậu: mặt sau chân, 1 hàng vảy lớn
+- Hàng Độ: từ cựa lên đến gối
+- Hàng Kẽm: giữa hàng Hậu và hàng Độ, từ cựa lên gối (mặt trong)
+- Hàng Biên: giữa hàng Ngoại và hàng Hậu, nhỏ lăn tăn từ gối xuống
 
-QUY TẮC ĐỘ TIN CẬY:
-- "thấy rõ" = rõ nét 80%+
-- "có dấu hiệu" = nhìn thấy khoảng 60%  
-- "không quan sát được rõ" = dưới 50% — phải nói lý do`;
+QUY TẮC TUYỆT ĐỐI:
+1. Tất cả ảnh là CÙNG 1 CON GÀ — tự nhận diện từng ảnh là phần gì
+2. CHỈ mô tả hình dạng, vị trí, kích thước vảy — KHÔNG đặt tên
+3. Dùng đúng thuật ngữ: hàng Quách, hàng Thành, hàng Hậu, hàng Độ, hàng Kẽm, hàng Biên, hàng Thới
+4. Nếu không rõ → nói rõ lý do
+5. Mỗi lần viết khác cách diễn đạt, không lặp mẫu
+6. Viết kiểu dân chơi gà miền Nam — gần gũi, thực tế
 
-const USER_PROMPT = `Nhìn tất cả ảnh tôi gửi. Đây là nhiều góc của CÙNG MỘT CON GÀ.
+MỨC ĐỘ TIN CẬY:
+- "thấy rõ": 80%+ rõ nét
+- "có dấu hiệu": khoảng 60%
+- "không quan sát được rõ": dưới 50%`;
 
-Bước 1: Tự nhận diện mỗi ảnh chụp phần gì (mặt/chân/thân/toàn thân/không rõ).
-Bước 2: Tổng hợp thông tin từ tất cả ảnh.
-Bước 3: Mô tả thực tế những gì thấy được.
+const USER_PROMPT = `Nhìn tất cả ảnh — đây là CÙNG 1 CON GÀ nhiều góc.
 
-Trả về JSON thuần, không backtick:
+Tự nhận diện từng ảnh là phần gì, rồi tổng hợp phân tích.
+
+Trả về JSON thuần không backtick:
 {
-  "so_anh_nhan_duoc": 2,
-  "nhan_dien_anh": "Ảnh 1: [chụp phần gì, rõ hay mờ]. Ảnh 2: [chụp phần gì, rõ hay mờ]...",
+  "so_anh": 2,
+  "nhan_dien_anh": "Ảnh 1: [phần gì, rõ/mờ]. Ảnh 2: [phần gì, rõ/mờ]...",
   "do_ro_trung_binh": 70,
-  "phan_thay_ro": "liệt kê những phần nhìn thấy rõ: mắt/chân/vảy/thân...",
-  "phan_khong_ro": "liệt kê những phần không thấy rõ và lý do",
-  "mat": "mô tả màu sắc, độ sáng, độ sâu — hoặc 'không quan sát được rõ vì [lý do]'",
-  "chan": "mô tả màu chân, độ khô, gân nổi hay không — hoặc 'không quan sát được rõ'",
-  "long_dang": "mô tả màu lông, dáng đứng, thể trạng thấy được",
-  "vay_quan_sat": "MÔ TẢ KỸ những vảy thấy được: vị trí chính xác (sát gối/sát chậu/ngang cựa/dưới ngón giữa/khác), kích thước (to/vừa/nhỏ), hình dạng đặc biệt nếu có. KHÔNG đặt tên vảy. Nếu không thấy rõ vảy → ghi rõ lý do",
-  "diem_manh": "2-3 điểm mạnh thực sự thấy được từ ảnh",
-  "diem_han_che": "điểm yếu hoặc phần không quan sát được đủ",
-  "nhan_xet_tong": "nhận xét tổng thể theo kiểu dân chơi gà miền Tây, dựa trên những gì thực sự thấy, không nịnh gà, không phán bừa"
+  "phan_thay_ro": "liệt kê phần thấy rõ",
+  "phan_khong_ro": "liệt kê phần chưa thấy và lý do",
+  "mat": "mô tả màu sắc mắt, độ sáng, độ lanh — dùng từ chuyên môn dân chơi gà",
+  "chan": "mô tả màu chân (vàng/xanh/đen/trắng...), độ khô, gân nổi, chân có tướng không",
+  "long_dang": "mô tả màu lông, dáng đứng, thể trạng — nhìn có phải gà chiến không",
+  "vay_quan_sat": "MÔ TẢ KỸ vảy thấy được theo đúng thuật ngữ hàng Quách/Thành/Hậu/Độ/Kẽm/Biên/Thới: vị trí chính xác, kích thước (to/vừa/nhỏ), hình dạng đặc biệt, số lượng, màu sắc. Nếu thấy vảy có hình dạng đặc biệt thì mô tả kỹ hình dạng đó. KHÔNG đặt tên vảy.",
+  "hau_do_kem": "mô tả riêng hàng Hậu, hàng Độ, hàng Kẽm — đây là quan trọng để đánh giá",
+  "diem_manh": "2-3 điểm mạnh thực sự thấy được",
+  "diem_han_che": "điểm yếu hoặc phần chưa quan sát đủ",
+  "nhan_xet_tong": "nhận xét tổng thể theo kiểu dân chơi gà — thực tế, không nịnh, không phán bừa"
 }`;
 
 export async function POST(req: NextRequest) {
@@ -117,7 +163,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Cần ít nhất 1 ảnh' }, { status: 400 });
     }
 
-    // Gửi tất cả ảnh — AI tự nhận diện từng ảnh là gì
     const content: any[] = [{ type: 'text', text: USER_PROMPT }];
     validImages.forEach((img: string, i: number) => {
       content.push({ type: 'text', text: `--- Ảnh ${i + 1} ---` });
@@ -126,7 +171,7 @@ export async function POST(req: NextRequest) {
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
-      max_tokens: 1500,
+      max_tokens: 1800,
       temperature: 0.8,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
@@ -141,54 +186,59 @@ export async function POST(req: NextRequest) {
     try { ai = JSON.parse(raw); }
     catch {
       const m = raw.match(/\{[\s\S]*\}/);
-      if (!m) return NextResponse.json({ error: 'Không parse được kết quả AI' }, { status: 500 });
+      if (!m) return NextResponse.json({ error: 'Không parse được' }, { status: 500 });
       ai = JSON.parse(m[0]);
     }
 
-    // Map vảy từ mô tả AI — không để AI tự đặt tên
-    const mappedVay = mapVay(ai.vay_quan_sat || '');
+    // Mapping từ mô tả AI — code quyết định tên vảy
+    const vayText = `${ai.vay_quan_sat || ''} ${ai.hau_do_kem || ''}`;
+    const mappedVay = mapVayFromDescription(vayText);
     const doRo = ai.do_ro_trung_binh || 60;
-    const tongDiem = tinhDiem(`${ai.mat} ${ai.chan} ${ai.long_dang}`, mappedVay, doRo);
+    const tongDiem = tinhDiem(ai.mat || '', ai.chan || '', ai.long_dang || '', mappedVay, doRo);
     const doTinCay = Math.min(90, Math.round(doRo * 0.5 + mappedVay.tin_cay * 0.5));
     const gia = tinhGia(tongDiem, mappedVay.loai);
 
+    // Tìm danh sách vảy tốt có thể trong database để AI so sánh
+    const vayTotList = Object.entries(VAY_DATABASE.tot)
+      .map(([ten, data]) => `${ten}: ${data.vi_tri}`)
+      .join('\n');
+
     return NextResponse.json({
-      // Thông tin AI quan sát
       so_anh: validImages.length,
       nhan_dien_anh: ai.nhan_dien_anh,
       do_ro: doRo,
-      chat_luong: ai.phan_thay_ro,
+      phan_thay_ro: ai.phan_thay_ro,
       phan_khong_ro: ai.phan_khong_ro,
-
-      // Nội dung phân tích
       mat: ai.mat,
       chan: ai.chan,
       long_dang: ai.long_dang,
       vay_quan_sat: ai.vay_quan_sat,
+      hau_do_kem: ai.hau_do_kem,
       diem_manh: ai.diem_manh,
       diem_han_che: ai.diem_han_che,
       nhan_xet_tong: ai.nhan_xet_tong,
 
-      // Kết luận từ code (không phải AI tự set)
+      // Kết luận từ code mapping
       vay_ten: mappedVay.ten,
       vay_loai: mappedVay.loai,
       vay_ket_luan: mappedVay.ten
-        ? `${mappedVay.loai === 'xau' ? '⚠️' : '✅'} Phát hiện vảy ${mappedVay.ten}`
-        : '📊 Vảy phổ thông — không phát hiện vảy quý hay vảy xấu',
+        ? `${mappedVay.loai === 'xau' ? '⚠️' : '✅'} Phát hiện: ${mappedVay.ten}`
+        : '📊 Vảy phổ thông — không phát hiện vảy quý hay vảy xấu trong 92 loại',
       vay_y_nghia: mappedVay.y_nghia,
+      tin_cay_vay: mappedVay.tin_cay,
 
       tong_diem: tongDiem,
       do_tin_cay: doTinCay,
       gia_de_xuat: gia,
-      ly_do_gia: `Điểm ${tongDiem}/10 — ${mappedVay.ten ? `phát hiện ${mappedVay.ten}` : 'vảy phổ thông'} — độ rõ ảnh ${doRo}%`,
+      ly_do_gia: `Điểm ${tongDiem}/10 — ${mappedVay.ten ? `phát hiện ${mappedVay.ten} (tin cậy ${mappedVay.tin_cay}%)` : 'vảy phổ thông'} — độ rõ ảnh ${doRo}%`,
 
-      yeu_cau_bo_sung: doRo < 70 || ai.phan_khong_ro?.includes('vảy')
-        ? `Cần thêm ảnh: ${ai.phan_khong_ro || 'ảnh chân rõ sát gối và ngang cựa để xác định vảy chính xác'}`
-        : validImages.length < 4
-          ? `Hiện có ${validImages.length}/4 ảnh. Thêm ảnh để phân tích đầy đủ hơn.`
-          : 'Ảnh đủ góc. Nếu có video đá thử càng chính xác hơn.',
+      yeu_cau_bo_sung: doRo < 70
+        ? `Cần ảnh rõ hơn: ${ai.phan_khong_ro || 'đặc biệt ảnh chân sát gối, ngang cựa, dưới ngón giữa'}`
+        : validImages.length < 3
+          ? `Có ${validImages.length}/4 ảnh. Thêm ảnh chân rõ vảy để phân tích chính xác hơn.`
+          : 'Ảnh tương đối đủ. Nếu có video đá thử càng chính xác hơn.',
 
-      canh_bao: 'Nhận định AI từ hình ảnh — không phải đánh giá thực chiến. Giá tham khảo thị trường. Kết quả phụ thuộc nuôi dưỡng và luyện tập.',
+      canh_bao: 'Nhận định AI từ hình ảnh — không phải đánh giá thực chiến. Giá tham khảo thị trường. Kết quả thực tế phụ thuộc nuôi dưỡng và luyện tập.',
     });
 
   } catch (error: any) {
