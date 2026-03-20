@@ -77,6 +77,8 @@ export default function CongDongPage() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'newest' | 'hot'>('newest');
+  const [hotPosts, setHotPosts] = useState<Post[]>([]);
+  const [featuredVideos, setFeaturedVideos] = useState<any[]>([]);
   const popupRef = useRef<HTMLDivElement>(null);
 
   // ── Auth ──────────────────────────────────────────────────
@@ -89,12 +91,35 @@ export default function CongDongPage() {
     fetchPosts();
   }, [sortBy]);
 
+  // ── Load sidebar data ─────────────────────────────────────
+  useEffect(() => {
+    fetchSidebarData();
+  }, []);
+
+  async function fetchSidebarData() {
+    // Bài viết hot (nhiều like nhất)
+    const { data: hotData } = await supabase
+      .from('posts')
+      .select('id, noi_dung, like_count, likes')
+      .neq('status', 'hidden')
+      .order('like_count', { ascending: false })
+      .limit(5);
+    if (hotData) setHotPosts(hotData as Post[]);
+
+    // Videos nổi bật
+    const { data: vidData } = await supabase
+      .from('videos')
+      .select('*')
+      .limit(3);
+    if (vidData) setFeaturedVideos(vidData);
+  }
+
   async function fetchPosts() {
     setLoading(true);
     let query = supabase
       .from('posts')
       .select('*, profiles(full_name, avatar_url)')
-      .eq('status', 'active');
+      .neq('status', 'hidden');  // chỉ ẩn bài bị report, còn lại hiện hết
 
     if (sortBy === 'newest') query = query.order('created_at', { ascending: false });
     else query = query.order('like_count', { ascending: false });
@@ -376,33 +401,53 @@ export default function CongDongPage() {
 
         {/* ── CỘT PHẢI ──────────────────────────────────────── */}
         <aside style={{ position: 'sticky', top: 80, height: 'fit-content' }}>
-          {/* Video nổi bật */}
+          {/* Video nổi bật - data thật từ Supabase */}
           <div style={{ background: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>🎬 Video nổi bật</div>
-            {[{ title: 'Đá gà kích tính', views: '10K', ytId: 'dQw4w9WgXcQ' }, { title: 'Gà xanh 3 hồ', views: '20K', ytId: 'dQw4w9WgXcQ' }].map(v => (
-              <div key={v.title} style={{ marginBottom: 12, cursor: 'pointer' }}>
-                <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#000', paddingBottom: '56.25%' }}>
-                  <img src={`https://img.youtube.com/vi/${v.ytId}/mqdefault.jpg`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16 }}>▶</div>
-                  </div>
-                  <div style={{ position: 'absolute', bottom: 6, right: 8, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: 11, padding: '2px 6px', borderRadius: 4 }}>▶ {v.views}</div>
+            {featuredVideos.length === 0 ? (
+              <p style={{ color: '#aaa', fontSize: 13 }}>Chưa có video</p>
+            ) : featuredVideos.map((v: any) => {
+              // Thử các tên cột phổ biến
+              const ytUrl = v.youtube_url || v.url || v.link || v.video_url || '';
+              const ytId = getYoutubeId(ytUrl);
+              const title = v.tieu_de || v.title || v.ten || 'Video';
+              const views = v.luot_xem || v.views || v.view_count || 0;
+              return (
+                <div key={v.id} style={{ marginBottom: 12, cursor: 'pointer' }}>
+                  {ytId ? (
+                    <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#000', paddingBottom: '56.25%' }}>
+                      <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16 }}>▶</div>
+                      </div>
+                      {views > 0 && <div style={{ position: 'absolute', bottom: 6, right: 8, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: 11, padding: '2px 6px', borderRadius: 4 }}>▶ {formatNum(views)}</div>}
+                    </div>
+                  ) : (
+                    <div style={{ background: '#f0f2f5', borderRadius: 8, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa' }}>🎬</div>
+                  )}
+                  <p style={{ margin: '6px 0 0', fontSize: 13, fontWeight: 600 }}>{title}</p>
+                  {views > 0 && <p style={{ margin: 0, fontSize: 11, color: '#888' }}>{formatNum(views)} lượt xem</p>}
                 </div>
-                <p style={{ margin: '6px 0 0', fontSize: 13, fontWeight: 600 }}>{v.title}</p>
-                <p style={{ margin: 0, fontSize: 11, color: '#888' }}>{v.views} lượt xem</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          {/* Bài viết hot */}
+          {/* Bài viết hot - data thật từ Supabase */}
           <div style={{ background: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: '#c0392b', marginBottom: 12 }}>🔥 Bài viết hot</div>
-            {['Cách xem vây gà chuẩn', 'Top giống gà đá hay', 'Bí quyết nuôi gà đòn'].map(t => (
-              <div key={t} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 10, cursor: 'pointer' }}>
-                <span style={{ color: '#c0392b', marginTop: 2 }}>▪</span>
-                <span style={{ fontSize: 13, color: '#333', lineHeight: 1.4 }}>{t}</span>
-              </div>
-            ))}
+            {hotPosts.length === 0 ? (
+              <p style={{ color: '#aaa', fontSize: 13 }}>Chưa có bài viết</p>
+            ) : hotPosts.map(p => {
+              const text = p.noi_dung || p.content || '';
+              const preview = text.length > 60 ? text.slice(0, 60) + '...' : text;
+              return (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 10, cursor: 'pointer' }}
+                  onClick={() => document.getElementById(`post-${p.id}`)?.scrollIntoView({ behavior: 'smooth' })}>
+                  <span style={{ color: '#c0392b', marginTop: 2, flexShrink: 0 }}>▪</span>
+                  <span style={{ fontSize: 13, color: '#333', lineHeight: 1.4 }}>{preview}</span>
+                </div>
+              );
+            })}
           </div>
 
           {/* Banners */}
@@ -460,7 +505,7 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
   const likeCount = post.like_count ?? post.likes ?? 0;   // hỗ trợ cả 2 tên cột
 
   return (
-    <div style={{ background: '#fff', borderRadius: 12, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+    <div id={`post-${post.id}`} style={{ background: '#fff', borderRadius: 12, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ padding: '16px 16px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
