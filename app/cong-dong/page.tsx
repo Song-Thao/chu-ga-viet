@@ -39,9 +39,11 @@ function formatNum(n: number): string {
 interface Post {
   id: string;
   user_id: string;
-  content: string;
+  noi_dung: string;       // tên cột thật
+  content?: string;       // alias fallback
   youtube_url: string;
-  like_count: number;
+  likes?: number;         // cột gốc
+  like_count: number;     // cột mới thêm
   comment_count: number;
   share_count: number;
   report_count: number;
@@ -129,9 +131,8 @@ export default function CongDongPage() {
       .from('posts')
       .insert({
         user_id: user.id,
-        content: postContent.trim(),
+        noi_dung: postContent.trim(),   // tên cột thật trong DB
         youtube_url: cleanYoutube,
-        like_count: 0,
         comment_count: 0,
         share_count: 0,
         report_count: 0,
@@ -150,6 +151,8 @@ export default function CongDongPage() {
       // Gắn thông tin user hiện tại vào bài vừa đăng để hiện ngay
       const newPost: Post = {
         ...data,
+        noi_dung: postContent.trim(),
+        like_count: 0,
         profiles: {
           full_name: user.user_metadata?.full_name || 'Bạn',
           avatar_url: user.user_metadata?.avatar_url || '',
@@ -170,7 +173,7 @@ export default function CongDongPage() {
     setLikedPosts(prev => ({ ...prev, [postId]: !already }));
     setPosts(prev =>
       prev.map(p =>
-        p.id === postId ? { ...p, like_count: p.like_count + (already ? -1 : 1) } : p
+        p.id === postId ? { ...p, like_count: (p.like_count ?? p.likes ?? 0) + (already ? -1 : 1) } : p
       )
     );
     await supabase.rpc('toggle_like', { post_id: postId, delta: already ? -1 : 1 });
@@ -453,6 +456,8 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
   const ytId = getYoutubeId(post.youtube_url);
   const avatar = post.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.profiles?.full_name || 'U')}&background=8B0000&color=fff`;
   const name = post.profiles?.full_name || 'Người dùng';
+  const postText = post.noi_dung || post.content || '';   // hỗ trợ cả 2 tên cột
+  const likeCount = post.like_count ?? post.likes ?? 0;   // hỗ trợ cả 2 tên cột
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
@@ -469,7 +474,7 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
       </div>
 
       {/* Content */}
-      <div style={{ padding: '0 16px 12px', fontSize: 15, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{post.content}</div>
+      <div style={{ padding: '0 16px 12px', fontSize: 15, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{postText}</div>
 
       {/* YouTube embed */}
       {ytId && (
@@ -485,7 +490,7 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
 
       {/* Stats */}
       <div style={{ padding: '8px 16px', display: 'flex', gap: 16, fontSize: 13, color: '#888', borderBottom: '1px solid #e4e6ea' }}>
-        <span>👍 {formatNum(post.like_count)}</span>
+        <span>👍 {formatNum(likeCount)}</span>
         <span>💬 {formatNum(post.comment_count)}</span>
         <span>🔁 {formatNum(post.share_count)}</span>
       </div>
