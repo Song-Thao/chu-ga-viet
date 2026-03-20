@@ -10,17 +10,30 @@ export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [loading, setLoading] = useState(true);
 
-  const [stats, setStats] = useState({ users: 0, posts: 0, orders: 0, revenue: 0, newUsers: 0, newPosts: 0 });
+  const [stats, setStats] = useState({ users: 0, posts: 0, orders: 0, newUsers: 0, newPosts: 0 });
   const [users, setUsers] = useState<any[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [config, setConfig] = useState<any>({
     phi_percent: 2, phi_codinh: 0, coc_percent: 30, bat_buoc_escrow: false,
-    tk_ten: '', tk_so: '', tk_ngan_hang: '', tk_bin: '', zalo: '',
-    shopee_link: '',
+    tk_ten: '', tk_so: '', tk_ngan_hang: '', tk_bin: '', zalo: '', shopee_link: '',
   });
   const [configSaving, setConfigSaving] = useState(false);
   const [configSaved, setConfigSaved] = useState(false);
+
+  // Banners
+  const [banners, setBanners] = useState<any[]>([
+    { vi_tri: 1, tieu_de: 'THUỐC BỔ GÀ', tieu_de_phu: 'Tăng đòn • Tăng da • Tăng sức bền', link: '' },
+    { vi_tri: 2, tieu_de: 'MÁY ẤP TRỨNG', tieu_de_phu: 'Công nghệ mới nhất 2024', link: '' },
+    { vi_tri: 3, tieu_de: 'THỨC ĂN', tieu_de_phu: 'Dinh dưỡng cao cấp', link: '' },
+  ]);
+  const [bannerSaving, setBannerSaving] = useState(false);
+  const [bannerSaved, setBannerSaved] = useState(false);
+
+  // Bài viết
+  const [newPost, setNewPost] = useState({ tieu_de: '', loai: 'Tin tức', noi_dung: '' });
+  const [postSaving, setPostSaving] = useState(false);
+  const [postSaved, setPostSaved] = useState(false);
 
   useEffect(() => { checkAdmin(); }, []);
 
@@ -29,7 +42,7 @@ export default function AdminPage() {
     if (!user) { router.push('/login'); return; }
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
     if (profile?.role !== 'admin') { router.push('/'); return; }
-    await Promise.all([fetchStats(), fetchUsers(), fetchPosts(), fetchOrders(), fetchConfig()]);
+    await Promise.all([fetchStats(), fetchUsers(), fetchPosts(), fetchOrders(), fetchConfig(), fetchBanners()]);
     setLoading(false);
   };
 
@@ -43,7 +56,7 @@ export default function AdminPage() {
       supabase.from('profiles').select('*', { count: 'exact', head: true }).gte('created_at', today),
       supabase.from('ga').select('*', { count: 'exact', head: true }).gte('created_at', today),
     ]);
-    setStats({ users: totalUsers || 0, posts: totalPosts || 0, orders: totalOrders || 0, revenue: 0, newUsers: newUsers || 0, newPosts: newPosts || 0 });
+    setStats({ users: totalUsers || 0, posts: totalPosts || 0, orders: totalOrders || 0, newUsers: newUsers || 0, newPosts: newPosts || 0 });
   };
 
   const fetchUsers = async () => {
@@ -66,6 +79,12 @@ export default function AdminPage() {
     if (data) setConfig(data);
   };
 
+  const fetchBanners = async () => {
+    const { data } = await supabase.from('banners').select('*').order('vi_tri');
+    if (data && data.length > 0) setBanners(data);
+  };
+
+  // Actions
   const lockUser = async (userId: string, lock: boolean) => {
     await supabase.from('profiles').update({ status: lock ? 'locked' : 'active' }).eq('id', userId);
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: lock ? 'locked' : 'active' } : u));
@@ -84,21 +103,46 @@ export default function AdminPage() {
   const saveConfig = async () => {
     setConfigSaving(true);
     await supabase.from('config').update({
-      phi_percent: config.phi_percent,
-      phi_codinh: config.phi_codinh,
-      coc_percent: config.coc_percent,
-      bat_buoc_escrow: config.bat_buoc_escrow,
-      tk_ten: config.tk_ten,
-      tk_so: config.tk_so,
-      tk_ngan_hang: config.tk_ngan_hang,
-      tk_bin: config.tk_bin,
-      zalo: config.zalo,
-      shopee_link: config.shopee_link,
+      phi_percent: config.phi_percent, phi_codinh: config.phi_codinh,
+      coc_percent: config.coc_percent, bat_buoc_escrow: config.bat_buoc_escrow,
+      tk_ten: config.tk_ten, tk_so: config.tk_so, tk_ngan_hang: config.tk_ngan_hang,
+      tk_bin: config.tk_bin, zalo: config.zalo, shopee_link: config.shopee_link,
       updated_at: new Date().toISOString(),
     }).eq('id', config.id);
     setConfigSaving(false);
     setConfigSaved(true);
     setTimeout(() => setConfigSaved(false), 2000);
+  };
+
+  const saveBanners = async () => {
+    setBannerSaving(true);
+    await Promise.all(banners.map(b =>
+      supabase.from('banners').update({
+        tieu_de: b.tieu_de, tieu_de_phu: b.tieu_de_phu, link: b.link,
+        updated_at: new Date().toISOString(),
+      }).eq('vi_tri', b.vi_tri)
+    ));
+    setBannerSaving(false);
+    setBannerSaved(true);
+    setTimeout(() => setBannerSaved(false), 2000);
+  };
+
+  const savePost = async () => {
+    if (!newPost.tieu_de || !newPost.noi_dung) return;
+    setPostSaving(true);
+    await supabase.from('posts').insert({
+      noi_dung: newPost.noi_dung,
+      loai: newPost.loai,
+      tieu_de: newPost.tieu_de,
+    });
+    setPostSaving(false);
+    setPostSaved(true);
+    setNewPost({ tieu_de: '', loai: 'Tin tức', noi_dung: '' });
+    setTimeout(() => setPostSaved(false), 2000);
+  };
+
+  const updateBanner = (idx: number, field: string, value: string) => {
+    setBanners(prev => prev.map((b, i) => i === idx ? { ...b, [field]: value } : b));
   };
 
   const getStatusColor = (status: string) => ({
@@ -137,7 +181,6 @@ export default function AdminPage() {
 
   return (
     <div className="flex min-h-screen bg-gray-100">
-
       {/* SIDEBAR */}
       <div className="w-56 bg-[#8B1A1A] text-white flex flex-col flex-shrink-0">
         <div className="p-4 border-b border-red-700">
@@ -171,7 +214,7 @@ export default function AdminPage() {
                 { label: 'Tổng giao dịch', value: stats.orders, sub: 'tất cả', icon: '💰', color: 'bg-yellow-500' },
                 { label: 'User mới hôm nay', value: stats.newUsers, sub: 'đăng ký', icon: '🆕', color: 'bg-red-500' },
                 { label: 'Bài mới hôm nay', value: stats.newPosts, sub: 'đăng bán', icon: '📋', color: 'bg-teal-500' },
-                { label: 'Shopee Affiliate', value: '🔗', sub: config.shopee_link ? 'Đã cấu hình' : 'Chưa cấu hình', icon: '🛒', color: 'bg-orange-500' },
+                { label: 'Shopee Affiliate', value: '🛒', sub: config.shopee_link ? 'Đã cấu hình' : 'Chưa cấu hình', icon: '🛒', color: 'bg-orange-500' },
               ].map((s, i) => (
                 <div key={i} className="bg-white rounded-xl p-4 shadow-sm">
                   <div className={`w-10 h-10 ${s.color} rounded-lg flex items-center justify-center text-white text-lg mb-3`}>{s.icon}</div>
@@ -217,11 +260,9 @@ export default function AdminPage() {
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b">
-                  <tr>
-                    {['Người dùng', 'SĐT', 'Vai trò', 'Trạng thái', 'Thao tác'].map(h => (
-                      <th key={h} className="text-left px-4 py-3 text-gray-600 font-semibold">{h}</th>
-                    ))}
-                  </tr>
+                  <tr>{['Người dùng', 'SĐT', 'Vai trò', 'Trạng thái', 'Thao tác'].map(h => (
+                    <th key={h} className="text-left px-4 py-3 text-gray-600 font-semibold">{h}</th>
+                  ))}</tr>
                 </thead>
                 <tbody className="divide-y">
                   {users.map(u => (
@@ -264,11 +305,9 @@ export default function AdminPage() {
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b">
-                  <tr>
-                    {['Gà', 'Giá', 'Khu vực', 'AI', 'Trạng thái', 'Thao tác'].map(h => (
-                      <th key={h} className="text-left px-4 py-3 text-gray-600 font-semibold">{h}</th>
-                    ))}
-                  </tr>
+                  <tr>{['Gà', 'Giá', 'Khu vực', 'AI', 'Trạng thái', 'Thao tác'].map(h => (
+                    <th key={h} className="text-left px-4 py-3 text-gray-600 font-semibold">{h}</th>
+                  ))}</tr>
                 </thead>
                 <tbody className="divide-y">
                   {posts.map(p => {
@@ -294,13 +333,9 @@ export default function AdminPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1">
-                            {p.status !== 'active' && (
-                              <button onClick={() => updatePostStatus(p.id, 'active')} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200 transition">✓ Hiện</button>
-                            )}
-                            {p.status !== 'hidden' && (
-                              <button onClick={() => updatePostStatus(p.id, 'hidden')} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded hover:bg-gray-200 transition">Ẩn</button>
-                            )}
-                            <button onClick={() => updatePostStatus(p.id, 'deleted')} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 transition">Xóa</button>
+                            {p.status !== 'active' && <button onClick={() => updatePostStatus(p.id, 'active')} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200">✓ Hiện</button>}
+                            {p.status !== 'hidden' && <button onClick={() => updatePostStatus(p.id, 'hidden')} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded hover:bg-gray-200">Ẩn</button>}
+                            <button onClick={() => updatePostStatus(p.id, 'deleted')} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200">Xóa</button>
                           </div>
                         </td>
                       </tr>
@@ -319,16 +354,12 @@ export default function AdminPage() {
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b">
-                  <tr>
-                    {['Mã GD', 'Gà', 'Giá trị', 'Tiền cọc', 'Trạng thái', 'Thao tác'].map(h => (
-                      <th key={h} className="text-left px-4 py-3 text-gray-600 font-semibold">{h}</th>
-                    ))}
-                  </tr>
+                  <tr>{['Mã GD', 'Gà', 'Giá trị', 'Tiền cọc', 'Trạng thái', 'Thao tác'].map(h => (
+                    <th key={h} className="text-left px-4 py-3 text-gray-600 font-semibold">{h}</th>
+                  ))}</tr>
                 </thead>
                 <tbody className="divide-y">
-                  {orders.length === 0 && (
-                    <tr><td colSpan={6} className="text-center py-8 text-gray-400">Chưa có giao dịch nào</td></tr>
-                  )}
+                  {orders.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-gray-400">Chưa có giao dịch nào</td></tr>}
                   {orders.map(o => (
                     <tr key={o.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-mono text-xs font-bold text-[#8B1A1A]">{o.ma_giao_dich}</td>
@@ -340,18 +371,10 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1 flex-wrap">
-                          {o.status === 'pending_deposit' && (
-                            <button onClick={() => updateOrderStatus(o.id, 'deposited')} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition">✓ Nhận cọc</button>
-                          )}
-                          {o.status === 'deposited' && (
-                            <button onClick={() => updateOrderStatus(o.id, 'completed')} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200 transition">✓ Hoàn tất</button>
-                          )}
-                          {(o.status === 'deposited' || o.status === 'disputed') && (
-                            <button onClick={() => updateOrderStatus(o.id, 'refunded')} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200 transition">Hoàn tiền</button>
-                          )}
-                          {!['disputed','completed','refunded'].includes(o.status) && (
-                            <button onClick={() => updateOrderStatus(o.id, 'disputed')} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 transition">Tranh chấp</button>
-                          )}
+                          {o.status === 'pending_deposit' && <button onClick={() => updateOrderStatus(o.id, 'deposited')} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">✓ Nhận cọc</button>}
+                          {o.status === 'deposited' && <button onClick={() => updateOrderStatus(o.id, 'completed')} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200">✓ Hoàn tất</button>}
+                          {(o.status === 'deposited' || o.status === 'disputed') && <button onClick={() => updateOrderStatus(o.id, 'refunded')} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200">Hoàn tiền</button>}
+                          {!['disputed','completed','refunded'].includes(o.status) && <button onClick={() => updateOrderStatus(o.id, 'disputed')} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200">Tranh chấp</button>}
                         </div>
                       </td>
                     </tr>
@@ -367,33 +390,20 @@ export default function AdminPage() {
           <div>
             <h1 className="font-black text-2xl text-gray-800 mb-6">⚙️ Cài đặt hệ thống</h1>
             <div className="grid md:grid-cols-2 gap-4">
-
-              {/* Phí */}
               <div className="bg-white rounded-xl p-5 shadow-sm">
-                <h3 className="font-bold text-gray-700 mb-4">💰 Cấu hình phí giao dịch</h3>
+                <h3 className="font-bold text-gray-700 mb-4">💰 Phí giao dịch</h3>
                 <div className="space-y-4">
                   <div>
                     <label className="text-sm font-semibold text-gray-600 block mb-1">Phí giao dịch (%)</label>
-                    <input type="number" value={config.phi_percent} step="0.5"
-                      onChange={e => setConfig({...config, phi_percent: parseFloat(e.target.value)})}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
-                    <div className="text-xs text-gray-400 mt-1">Thu khi giao dịch hoàn tất</div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600 block mb-1">Phí cố định (đ)</label>
-                    <input type="number" value={config.phi_codinh}
-                      onChange={e => setConfig({...config, phi_codinh: parseInt(e.target.value)})}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+                    <input type="number" value={config.phi_percent} step="0.5" onChange={e => setConfig({...config, phi_percent: parseFloat(e.target.value)})} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
                   </div>
                   <div>
                     <label className="text-sm font-semibold text-gray-600 block mb-1">Tỷ lệ cọc (%)</label>
-                    <input type="number" value={config.coc_percent} step="5"
-                      onChange={e => setConfig({...config, coc_percent: parseFloat(e.target.value)})}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+                    <input type="number" value={config.coc_percent} step="5" onChange={e => setConfig({...config, coc_percent: parseFloat(e.target.value)})} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
                   </div>
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
-                      <div className="font-semibold text-sm text-gray-700">Bắt buộc giao dịch qua sàn</div>
+                      <div className="font-semibold text-sm text-gray-700">Bắt buộc qua sàn</div>
                       <div className="text-xs text-gray-400">Không cho phép tự do</div>
                     </div>
                     <button onClick={() => setConfig({...config, bat_buoc_escrow: !config.bat_buoc_escrow})}
@@ -404,7 +414,6 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Thanh toán */}
               <div className="bg-white rounded-xl p-5 shadow-sm">
                 <h3 className="font-bold text-gray-700 mb-4">🏦 Tài khoản nhận tiền</h3>
                 <div className="space-y-3">
@@ -425,53 +434,45 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* SHOPEE AFFILIATE */}
-              <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-5 shadow-sm md:col-span-2">
-                <h3 className="font-bold text-orange-800 mb-1">🛒 Shopee Affiliate — Link tiếp thị liên kết</h3>
-                <p className="text-xs text-orange-600 mb-4">Dán link affiliate vào đây — banner trang chủ sẽ tự động cập nhật. Ai click mua hàng bạn được hoa hồng!</p>
-                <div className="flex gap-3 items-start">
+              {/* SHOPEE */}
+              <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-5 md:col-span-2">
+                <h3 className="font-bold text-orange-800 mb-1">🛒 Shopee Affiliate</h3>
+                <p className="text-xs text-orange-600 mb-4">Dán link affiliate — banner trang chủ tự cập nhật. Ai click mua hàng bạn được hoa hồng!</p>
+                <div className="flex gap-3 items-end">
                   <div className="flex-1">
                     <label className="text-sm font-semibold text-orange-700 block mb-1">Link Shopee Affiliate</label>
                     <input value={config.shopee_link || ''} placeholder="https://s.shopee.vn/xxxxxxxxx"
                       onChange={e => setConfig({...config, shopee_link: e.target.value})}
                       className="w-full border-2 border-orange-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white" />
                     <div className="text-xs text-orange-500 mt-1">
-                      Lấy link tại: <a href="https://affiliate.shopee.vn/custom_link" target="_blank" className="underline hover:text-orange-700">affiliate.shopee.vn → Custom Link</a>
+                      Lấy link tại: <a href="https://affiliate.shopee.vn/custom_link" target="_blank" className="underline">affiliate.shopee.vn → Custom Link</a>
                     </div>
                   </div>
                   {config.shopee_link && (
-                    <div className="flex-shrink-0 pt-6">
-                      <a href={config.shopee_link} target="_blank"
-                        className="bg-orange-500 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-orange-600 transition">
-                        Test link →
-                      </a>
-                    </div>
+                    <a href={config.shopee_link} target="_blank"
+                      className="bg-orange-500 text-white text-sm font-bold px-4 py-2 rounded-lg hover:bg-orange-600 transition whitespace-nowrap">
+                      Test link →
+                    </a>
                   )}
                 </div>
-
-                {/* Preview banner */}
                 {config.shopee_link && (
-                  <div className="mt-4">
-                    <div className="text-xs font-semibold text-orange-700 mb-2">Preview banner trang chủ:</div>
-                    <div className="bg-gradient-to-r from-orange-500 to-orange-400 rounded-xl p-4 flex items-center gap-4">
-                      <div className="text-3xl">🛒</div>
-                      <div className="flex-1">
-                        <div className="font-black text-white">Mua phụ kiện gà chọi trên Shopee</div>
-                        <div className="text-orange-100 text-xs mt-0.5">Thức ăn • Thuốc bổ • Dụng cụ chăn nuôi</div>
-                      </div>
-                      <div className="bg-white text-orange-500 font-black px-3 py-1.5 rounded-full text-sm">Mua ngay →</div>
+                  <div className="mt-4 bg-gradient-to-r from-orange-500 to-orange-400 rounded-xl p-3 flex items-center gap-3">
+                    <div className="text-2xl">🛒</div>
+                    <div className="flex-1">
+                      <div className="font-black text-white text-sm">Mua phụ kiện gà chọi trên Shopee</div>
+                      <div className="text-orange-100 text-xs">Preview banner trang chủ</div>
                     </div>
+                    <div className="bg-white text-orange-500 font-bold px-3 py-1 rounded-full text-xs">Mua ngay →</div>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* QR Preview */}
             {config.tk_bin && config.tk_so && (
               <div className="bg-white rounded-xl p-5 shadow-sm mt-4">
-                <h3 className="font-bold text-gray-700 mb-3">📱 Preview QR Code</h3>
+                <h3 className="font-bold text-gray-700 mb-3">📱 Preview QR</h3>
                 <img src={`https://img.vietqr.io/image/${config.tk_bin}-${config.tk_so}-compact2.png?accountName=${encodeURIComponent(config.tk_ten || '')}`}
-                  alt="QR Preview" className="w-40 h-40 rounded-xl border" />
+                  alt="QR" className="w-40 h-40 rounded-xl border" />
               </div>
             )}
 
@@ -486,35 +487,74 @@ export default function AdminPage() {
         {tab === 'content' && (
           <div>
             <h1 className="font-black text-2xl text-gray-800 mb-6">📝 Nội dung & Banner</h1>
+
+            {/* BANNER 3 Ô */}
             <div className="bg-white rounded-xl p-5 shadow-sm mb-4">
-              <h3 className="font-bold text-gray-700 mb-3">🖼️ Banner trang chủ (3 ô đầu)</h3>
-              <div className="grid grid-cols-3 gap-3">
-                {['THUỐC BỔ GÀ', 'MÁY ẤP TRỨNG', 'THỨC ĂN'].map((b, i) => (
-                  <div key={i} className="border rounded-xl p-3">
-                    <div className="font-semibold text-sm text-gray-700 mb-2">{b}</div>
-                    <input placeholder="Tiêu đề phụ..." className="w-full border rounded px-2 py-1 text-xs mb-1 focus:outline-none focus:ring-1 focus:ring-red-300" />
-                    <input placeholder="Link khi click..." className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-red-300" />
+              <h3 className="font-bold text-gray-700 mb-1">🖼️ Banner trang chủ (3 ô đầu)</h3>
+              <p className="text-xs text-gray-400 mb-4">Chỉnh tiêu đề, mô tả và link cho từng ô banner. Link có thể là Shopee affiliate hoặc bất kỳ link nào.</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                {banners.map((b, idx) => (
+                  <div key={idx} className="border-2 border-gray-100 rounded-xl p-4 hover:border-red-200 transition">
+                    <div className="text-xs font-bold text-gray-400 mb-2">Ô {b.vi_tri}</div>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600 block mb-1">Tiêu đề chính</label>
+                        <input value={b.tieu_de} onChange={e => updateBanner(idx, 'tieu_de', e.target.value)}
+                          className="w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600 block mb-1">Mô tả phụ</label>
+                        <input value={b.tieu_de_phu} onChange={e => updateBanner(idx, 'tieu_de_phu', e.target.value)}
+                          className="w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600 block mb-1">Link khi click</label>
+                        <input value={b.link} onChange={e => updateBanner(idx, 'link', e.target.value)}
+                          placeholder="https://s.shopee.vn/..."
+                          className="w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
-              <button className="mt-3 bg-[#8B1A1A] text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-[#6B0F0F] transition">
-                💾 Lưu banner
+
+              {/* Preview */}
+              <div className="mb-4">
+                <div className="text-xs font-semibold text-gray-500 mb-2">Preview:</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {banners.map((b, idx) => (
+                    <div key={idx} className={`bg-gradient-to-r ${idx === 0 ? 'from-red-900 to-red-700' : idx === 1 ? 'from-gray-700 to-gray-600' : 'from-yellow-800 to-yellow-700'} text-white p-3 rounded-lg`}>
+                      <div className="text-xs font-black">{b.tieu_de || 'Tiêu đề'}</div>
+                      <div className="text-xs text-white/70 mt-0.5">{b.tieu_de_phu || 'Mô tả'}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <button onClick={saveBanners} disabled={bannerSaving}
+                className={`px-6 py-2 rounded-xl font-black text-white transition ${bannerSaved ? 'bg-green-600' : 'bg-[#8B1A1A] hover:bg-[#6B0F0F]'} disabled:opacity-50`}>
+                {bannerSaving ? '⏳ Đang lưu...' : bannerSaved ? '✅ Đã lưu!' : '💾 Lưu banner'}
               </button>
             </div>
 
+            {/* BÀI VIẾT */}
             <div className="bg-white rounded-xl p-5 shadow-sm">
               <h3 className="font-bold text-gray-700 mb-3">📰 Thêm bài viết thư viện</h3>
               <div className="space-y-3">
-                <input placeholder="Tiêu đề bài viết..." className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
-                <select className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300">
+                <input value={newPost.tieu_de} onChange={e => setNewPost({...newPost, tieu_de: e.target.value})}
+                  placeholder="Tiêu đề bài viết..." className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+                <select value={newPost.loai} onChange={e => setNewPost({...newPost, loai: e.target.value})}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300">
                   <option>Tin tức</option>
                   <option>Hướng dẫn</option>
                   <option>Kiến thức</option>
                 </select>
-                <textarea placeholder="Nội dung bài viết..." rows={6}
+                <textarea value={newPost.noi_dung} onChange={e => setNewPost({...newPost, noi_dung: e.target.value})}
+                  placeholder="Nội dung bài viết..." rows={6}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none" />
-                <button className="bg-[#8B1A1A] text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-[#6B0F0F] transition">
-                  📝 Đăng bài viết
+                <button onClick={savePost} disabled={postSaving}
+                  className={`px-6 py-2 rounded-lg font-bold text-white transition ${postSaved ? 'bg-green-600' : 'bg-[#8B1A1A] hover:bg-[#6B0F0F]'} disabled:opacity-50`}>
+                  {postSaving ? '⏳ Đang đăng...' : postSaved ? '✅ Đã đăng!' : '📝 Đăng bài viết'}
                 </button>
               </div>
             </div>
