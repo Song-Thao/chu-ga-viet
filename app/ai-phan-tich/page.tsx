@@ -1,0 +1,210 @@
+'use client';
+import { useState } from 'react';
+
+const KetQuaMau = {
+  tong_diem: 8.5,
+  nhan_xet: 'Gà có ngoại hình tốt, mắt sáng và linh hoạt. Chân vuông chắc, vảy đẹp. Đây là con gà có tiềm năng chiến đấu cao.',
+  chi_tiet: [
+    { phan: '👁 Mắt', diem: 9, mo_ta: 'Sáng, không bị sóng', mau: 'bg-green-500' },
+    { phan: '🦵 Chân', diem: 8.5, mo_ta: 'Chắc khỏe, không bị thương', mau: 'bg-green-500' },
+    { phan: '🐾 Vảy', diem: 8, mo_ta: 'Vảy đẹp, quý hiếm', mau: 'bg-yellow-500' },
+    { phan: '🐓 Đầu', diem: 8.5, mo_ta: 'Đẹp, sáng bóng', mau: 'bg-green-500' },
+    { phan: '💪 Thân', diem: 8, mo_ta: 'Cân đối, khỏe mạnh', mau: 'bg-yellow-500' },
+    { phan: '🪶 Lông', diem: 9, mo_ta: 'Mượt, bóng đẹp', mau: 'bg-green-500' },
+  ],
+  gia_de_xuat: '5.000.000 - 8.000.000',
+};
+
+export default function AIPhanTichPage() {
+  const [image, setImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<typeof KetQuaMau | null>(null);
+  const [step, setStep] = useState(0);
+
+  const LoadingSteps = [
+    '🔍 Đang nhận diện gà...',
+    '👁 Phân tích mắt...',
+    '🦵 Phân tích chân và vảy...',
+    '🤖 Tổng hợp kết quả...',
+  ];
+
+  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setImage(ev.target?.result as string);
+      setResult(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAnalyze = () => {
+    if (!image) return;
+    setLoading(true);
+    setStep(0);
+    const interval = setInterval(() => {
+      setStep(prev => {
+        if (prev >= LoadingSteps.length - 1) {
+          clearInterval(interval);
+          setLoading(false);
+          setResult(KetQuaMau);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 800);
+  };
+
+  const getDiemMau = (diem: number) => {
+    if (diem >= 8.5) return 'text-green-600';
+    if (diem >= 7) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-4">
+
+      {/* HEADER */}
+      <div className="bg-gradient-to-r from-[#8B1A1A] to-red-700 text-white rounded-xl p-6 mb-6 text-center">
+        <div className="text-4xl mb-2">🤖</div>
+        <h1 className="font-black text-2xl mb-1">AI Tướng Gà</h1>
+        <p className="text-red-200 text-sm">Upload ảnh gà — AI phân tích tướng số trong vài giây</p>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
+
+        {/* UPLOAD */}
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <h2 className="font-bold text-gray-700 mb-3">📸 Upload ảnh gà</h2>
+
+            <label className="block border-2 border-dashed border-red-300 rounded-xl cursor-pointer hover:border-red-500 hover:bg-red-50 transition overflow-hidden">
+              <input type="file" accept="image/*" className="hidden" onChange={handleImage} />
+              {image ? (
+                <img src={image} alt="Gà" className="w-full h-56 object-cover" />
+              ) : (
+                <div className="h-56 flex flex-col items-center justify-center text-gray-400">
+                  <div className="text-5xl mb-3">📷</div>
+                  <div className="text-sm font-semibold">Thả file vào đây hoặc nhấp để chọn ảnh gà</div>
+                  <div className="text-xs mt-1">JPG, PNG tối đa 10MB</div>
+                </div>
+              )}
+            </label>
+
+            {image && !loading && !result && (
+              <button onClick={handleAnalyze}
+                className="w-full mt-3 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition flex items-center justify-center gap-2">
+                🤖 Phân tích ngay
+              </button>
+            )}
+
+            {image && (result || loading) && (
+              <button onClick={() => { setImage(null); setResult(null); }}
+                className="w-full mt-3 border-2 border-gray-300 text-gray-600 font-semibold py-2 rounded-xl hover:bg-gray-50 transition text-sm">
+                🔄 Upload ảnh khác
+              </button>
+            )}
+          </div>
+
+          {/* HƯỚNG DẪN */}
+          {!image && (
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <h3 className="font-bold text-gray-700 mb-3">💡 Để có kết quả tốt nhất</h3>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li className="flex gap-2">✅ <span>Chụp rõ mặt, chân, thân gà</span></li>
+                <li className="flex gap-2">✅ <span>Ánh sáng đủ sáng</span></li>
+                <li className="flex gap-2">✅ <span>Gà đứng tự nhiên</span></li>
+                <li className="flex gap-2">❌ <span>Tránh ảnh mờ, tối</span></li>
+                <li className="flex gap-2">❌ <span>Tránh ảnh từ xa quá</span></li>
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {/* KẾT QUẢ */}
+        <div>
+          {/* LOADING */}
+          {loading && (
+            <div className="bg-white rounded-xl p-6 shadow-sm text-center">
+              <div className="w-16 h-16 border-4 border-[#8B1A1A] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <div className="font-bold text-gray-800 mb-2">{LoadingSteps[step]}</div>
+              <div className="flex gap-1 justify-center mt-3">
+                {LoadingSteps.map((_, i) => (
+                  <div key={i} className={`h-1.5 w-8 rounded-full transition ${i <= step ? 'bg-[#8B1A1A]' : 'bg-gray-200'}`}></div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* KẾT QUẢ */}
+          {result && !loading && (
+            <div className="space-y-4">
+
+              {/* TỔNG ĐIỂM */}
+              <div className="bg-white rounded-xl p-4 shadow-sm">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="font-black text-gray-800">🤖 Kết quả AI</h3>
+                  <div className={`text-4xl font-black ${getDiemMau(result.tong_diem)}`}>
+                    {result.tong_diem}
+                  </div>
+                </div>
+                <div className="flex gap-1 mb-3">
+                  {[1,2,3,4,5].map(i => (
+                    <div key={i} className={`h-2 flex-1 rounded-full ${i <= Math.round(result.tong_diem/2) ? 'bg-yellow-400' : 'bg-gray-200'}`}></div>
+                  ))}
+                </div>
+                <p className="text-sm text-gray-600 leading-relaxed">{result.nhan_xet}</p>
+              </div>
+
+              {/* CHI TIẾT */}
+              <div className="bg-white rounded-xl p-4 shadow-sm">
+                <h3 className="font-black text-gray-800 mb-3">📊 Phân tích chi tiết</h3>
+                <div className="space-y-3">
+                  {result.chi_tiet.map(ct => (
+                    <div key={ct.phan}>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-sm font-semibold text-gray-700">{ct.phan}</span>
+                        <span className={`text-sm font-black ${getDiemMau(ct.diem)}`}>{ct.diem}/10</span>
+                      </div>
+                      <div className="h-2 bg-gray-200 rounded-full mb-1">
+                        <div className={`h-2 ${ct.mau} rounded-full transition-all`} style={{width: `${ct.diem * 10}%`}}></div>
+                      </div>
+                      <div className="text-xs text-gray-500">{ct.mo_ta}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* GIÁ ĐỀ XUẤT */}
+              <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-4">
+                <div className="font-bold text-gray-800 mb-1">💰 Giá đề xuất</div>
+                <div className="text-2xl font-black text-[#8B1A1A]">{result.gia_de_xuat} đ</div>
+                <div className="text-xs text-gray-500 mt-1">*Dựa trên phân tích AI, giá thực tế có thể khác</div>
+              </div>
+
+              {/* BUTTONS */}
+              <div className="flex gap-3">
+                <button className="flex-1 bg-[#8B1A1A] text-white font-bold py-3 rounded-xl hover:bg-[#6B0F0F] transition text-sm">
+                  📋 Đăng bán với kết quả này
+                </button>
+                <button className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50 transition text-sm">
+                  💾 Lưu kết quả
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* PLACEHOLDER */}
+          {!image && !loading && !result && (
+            <div className="bg-white rounded-xl p-6 shadow-sm text-center text-gray-400 h-64 flex flex-col items-center justify-center">
+              <div className="text-5xl mb-3">🐓</div>
+              <div className="font-semibold">Upload ảnh gà để bắt đầu phân tích</div>
+              <div className="text-sm mt-1">AI sẽ đánh giá tướng số trong vài giây</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
