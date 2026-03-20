@@ -108,35 +108,63 @@ export default function CongDongPage() {
   }, []);
 
   async function fetchSidebarData() {
-    // Bài viết hot (nhiều like nhất)
+    // Bài viết hot
     const { data: hotData } = await supabase
       .from('posts')
       .select('id, noi_dung, like_count, likes')
-      .or('status.neq.hidden,status.is.null')
+      .eq('status', 'active')
       .order('like_count', { ascending: false })
       .limit(5);
     if (hotData) setHotPosts(hotData as Post[]);
 
     // Videos nổi bật
-    const { data: vidData } = await supabase
+    const { data: vidData, error: vidErr } = await supabase
       .from('videos')
       .select('*')
-      .limit(3);
+      .limit(5);
+    if (vidErr) console.error('videos error:', vidErr.message);
     if (vidData) setFeaturedVideos(vidData);
   }
 
   async function fetchPosts() {
     setLoading(true);
+
     let query = supabase
       .from('posts')
-      .select('*, profiles(full_name, avatar_url)')
-      .or('status.neq.hidden,status.is.null');
+      .select('*')
+      .eq('status', 'active');
 
     if (sortBy === 'newest') query = query.order('created_at', { ascending: false });
     else query = query.order('like_count', { ascending: false });
 
     const { data, error } = await query.limit(30);
-    if (!error && data) setPosts(data as Post[]);
+
+    if (error) {
+      console.error('fetchPosts error:', error.message);
+      setLoading(false);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      // Lấy profiles riêng
+      const userIds = [...new Set(data.map((p: any) => p.user_id))];
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .in('id', userIds);
+
+      const profileMap: Record<string, any> = {};
+      profilesData?.forEach((p: any) => { profileMap[p.id] = p; });
+
+      const postsWithProfiles = data.map((p: any) => ({
+        ...p,
+        profiles: profileMap[p.user_id] || null,
+      }));
+      setPosts(postsWithProfiles as Post[]);
+    } else {
+      setPosts([]);
+    }
+
     setLoading(false);
   }
 
@@ -462,17 +490,18 @@ export default function CongDongPage() {
             {featuredVideos.length === 0 ? (
               <p style={{ color: '#aaa', fontSize: 13 }}>Chưa có video</p>
             ) : featuredVideos.map((v: any) => {
-              // Thử các tên cột phổ biến
-              // Thử embed_url trước (đã có src), sau đó youtube_url (có thể là iframe)
-              const ytRaw = v.youtube_url || v.embed_url || v.url || v.link || '';
+              const ytRaw = v.youtube_url || v.embed_url || v.video_url || v.url || v.link || '';
               const ytId = getYoutubeId(ytRaw);
-              const title = v.tieu_de || v.title || v.ten || v.noi_dung || 'Video';
+              const embedId = !ytId && v.embed_url ? (v.embed_url.split('?')[0].split('/').pop() || null) : null;
+              const finalId = ytId || embedId || null;
+              const title = v.tieu_de || v.title || v.ten || v.mo_ta || v.noi_dung || 'Video';
               const views = v.luot_xem || v.views || v.view_count || 0;
+              const thumb = v.thumbnail || v.anh_dai_dien || v.image_url || '';
               return (
                 <div key={v.id} style={{ marginBottom: 12, cursor: 'pointer' }}>
-                  {ytId ? (
+                  {finalId ? (
                     <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#000', paddingBottom: '56.25%' }}>
-                      <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={thumb || `https://img.youtube.com/vi/${finalId}/mqdefault.jpg`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
                       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <div style={{ background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16 }}>▶</div>
                       </div>
