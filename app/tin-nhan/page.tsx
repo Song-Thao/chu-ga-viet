@@ -10,9 +10,7 @@ export default function TinNhanPage() {
   const [convs, setConvs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    init();
-  }, []);
+  useEffect(() => { init(); }, []);
 
   const init = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -21,7 +19,7 @@ export default function TinNhanPage() {
     await fetchConvs(user.id);
     setLoading(false);
 
-    // Realtime — cập nhật khi có tin nhắn mới
+    // Realtime
     supabase
       .channel('tin-nhan-list')
       .on('postgres_changes', {
@@ -33,34 +31,54 @@ export default function TinNhanPage() {
   };
 
   const fetchConvs = async (userId: string) => {
-    const { data } = await supabase
+    // Query đơn giản không dùng FK alias
+    const { data: convData } = await supabase
       .from('conversations')
-      .select(`
-        id, created_at, status,
-        ga (id, ten, gia, ga_images (url, is_primary)),
-        buyer:profiles!conversations_buyer_id_fkey (id, username),
-        seller:profiles!conversations_seller_id_fkey (id, username)
-      `)
+      .select('id, ga_id, buyer_id, seller_id, created_at')
       .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
       .order('created_at', { ascending: false });
 
-    if (!data) return;
+    if (!convData || convData.length === 0) {
+      setConvs([]);
+      return;
+    }
 
-    // Lấy tin nhắn cuối của mỗi conversation
-    const convsWithLastMsg = await Promise.all(
-      data.map(async (conv: any) => {
-        const { data: lastMsg } = await supabase
-          .from('messages')
-          .select('noi_dung, sender_id, created_at')
-          .eq('conversation_id', conv.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        return { ...conv, lastMsg };
-      })
-    );
+    // Lấy thêm thông tin cho từng conversation
+    const enriched = await Promise.all(convData.map(async (conv) => {
+      // Lấy thông tin gà
+      const { data: ga } = await supabase
+        .from('ga')
+        .select('id, ten, gia, ga_images(url, is_primary)')
+        .eq('id', conv.ga_id)
+        .single();
 
-    setConvs(convsWithLastMsg);
+      // Lấy tên đối phương
+      const doiPhuongId = conv.buyer_id === userId ? conv.seller_id : conv.buyer_id;
+      const { data: doiPhuong } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', doiPhuongId)
+        .maybeSingle();
+
+      // Lấy tin nhắn cuối
+      const { data: lastMsg } = await supabase
+        .from('messages')
+        .select('noi_dung, sender_id, created_at')
+        .eq('conversation_id', conv.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      return {
+        ...conv,
+        ga,
+        doiPhuong,
+        lastMsg,
+        isBuyer: conv.buyer_id === userId,
+      };
+    }));
+
+    setConvs(enriched);
   };
 
   if (loading) return (
@@ -83,46 +101,37 @@ export default function TinNhanPage() {
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          {convs.map((conv: any, idx: number) => {
-            const isMe = user?.id;
+          {convs.map((conv, idx) => {
             const ga = conv.ga;
             const anhGa = ga?.ga_images?.find((i: any) => i.is_primary)?.url || ga?.ga_images?.[0]?.url;
-            const isBuyer = conv.buyer?.id === isMe;
-            const doiPhuong = isBuyer ? conv.seller : conv.buyer;
-            const lastMsg = conv.lastMsg;
-            const isLastMine = lastMsg?.sender_id === isMe;
 
             return (
               <Link key={conv.id} href={`/tin-nhan/${conv.id}`}
                 className={`flex items-center gap-3 px-4 py-4 hover:bg-gray-50 transition ${idx < convs.length - 1 ? 'border-b' : ''}`}>
 
-                {/* Ảnh gà */}
-                <div className="flex-shrink-0">
-                  {anhGa ? (
-                    <img src={anhGa} alt="" className="w-12 h-12 object-cover rounded-xl" />
-                  ) : (
-                    <div className="w-12 h-12 bg-orange-800 rounded-xl flex items-center justify-center text-2xl">🐓</div>
-                  )}
-                </div>
+                {anhGa ? (
+                  <img src={anhGa} alt="" className="w-12 h-12 object-cover rounded-xl flex-shrink-0" />
+                ) : (
+                  <div className="w-12 h-12 bg-orange-800 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">🐓</div>
+                )}
 
-                {/* Nội dung */}
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-0.5">
                     <div className="font-bold text-sm text-gray-800 truncate">{ga?.ten || 'Gà'}</div>
-                    {lastMsg && (
+                    {conv.lastMsg && (
                       <div className="text-xs text-gray-400 flex-shrink-0 ml-2">
-                        {new Date(lastMsg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(conv.lastMsg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     )}
                   </div>
                   <div className="text-xs text-[#8B1A1A] font-semibold mb-1">
                     {parseInt(ga?.gia || 0).toLocaleString('vi-VN')} đ
                     {' • '}
-                    {isBuyer ? `Người bán: ${doiPhuong?.username || 'Ẩn'}` : `Người mua: ${doiPhuong?.username || 'Ẩn'}`}
+                    {conv.isBuyer ? `Người bán: ${conv.doiPhuong?.username || 'Ẩn'}` : `Người mua: ${conv.doiPhuong?.username || 'Ẩn'}`}
                   </div>
-                  {lastMsg ? (
+                  {conv.lastMsg ? (
                     <div className="text-xs text-gray-500 truncate">
-                      {isLastMine ? 'Bạn: ' : ''}{lastMsg.noi_dung}
+                      {conv.lastMsg.sender_id === user?.id ? 'Bạn: ' : ''}{conv.lastMsg.noi_dung}
                     </div>
                   ) : (
                     <div className="text-xs text-gray-400 italic">Chưa có tin nhắn</div>
