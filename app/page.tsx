@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
 const MauNen = ['bg-orange-800', 'bg-gray-700', 'bg-green-800', 'bg-red-900', 'bg-yellow-700', 'bg-teal-800'];
+const MauBanner = ['from-red-900 to-red-700', 'from-gray-700 to-gray-600', 'from-yellow-800 to-yellow-700'];
+const MauTieuDe = ['text-yellow-400', 'text-yellow-400', 'text-yellow-300'];
 
 const Videos = [
   { id: 1, ten: 'Trận Gà Kinh Điển', luot_xem: '112k', tg: '13:09' },
@@ -15,15 +17,24 @@ export default function HomePage() {
   const [gaMoiDang, setGaMoiDang] = useState<any[]>([]);
   const [gaNoiBat, setGaNoiBat] = useState<any[]>([]);
   const [shopeeLink, setShopeeLink] = useState('https://s.shopee.vn/AKVzuqq0dk');
+  const [banners, setBanners] = useState([
+    { vi_tri: 1, tieu_de: 'THUỐC BỔ GÀ', tieu_de_phu: 'Tăng đòn • Tăng da • Tăng sức bền', link: '' },
+    { vi_tri: 2, tieu_de: 'MÁY ẤP TRỨNG', tieu_de_phu: 'Công nghệ mới nhất 2024', link: '' },
+    { vi_tri: 3, tieu_de: 'THỨC ĂN', tieu_de_phu: 'Dinh dưỡng cao cấp', link: '' },
+  ]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
     try {
-      // Lấy config shopee link
+      // Config + Shopee link
       const { data: cfg } = await supabase.from('config').select('shopee_link').single();
       if (cfg?.shopee_link) setShopeeLink(cfg.shopee_link);
+
+      // Banners từ DB
+      const { data: bannerData } = await supabase.from('banners').select('*').order('vi_tri');
+      if (bannerData && bannerData.length > 0) setBanners(bannerData);
 
       // Gà mới đăng
       const { data: moiDang } = await supabase
@@ -94,28 +105,28 @@ export default function HomePage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-4">
 
-      {/* BANNER TOP */}
+      {/* BANNER 3 Ô — đọc từ DB */}
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <div className="bg-gradient-to-r from-red-900 to-red-700 text-white p-4 rounded-xl flex flex-col justify-center">
-          <div className="text-xs font-bold text-yellow-400 mb-1">THUỐC BỔ GÀ</div>
-          <div className="font-black text-lg leading-tight">CHIẾN SIÊU LỰC</div>
-          <div className="text-xs mt-1 text-gray-300">Tăng đòn • Tăng da • Tăng sức bền</div>
-        </div>
-        <div className="bg-gradient-to-r from-gray-700 to-gray-600 text-white p-4 rounded-xl flex flex-col justify-center">
-          <div className="text-xs font-bold text-yellow-400 mb-1">MÁY ẤP TRỨNG</div>
-          <div className="font-black text-lg leading-tight">HIỆU QUẢ, CHÍNH XÁC</div>
-          <div className="text-xs mt-1 text-gray-300">Công nghệ mới nhất 2024</div>
-        </div>
-        <div className="bg-gradient-to-r from-yellow-800 to-yellow-700 text-white p-4 rounded-xl flex flex-col justify-center">
-          <div className="text-xs font-bold text-yellow-300 mb-1">THỨC ĂN</div>
-          <div className="font-black text-lg leading-tight">TĂNG LỰC CHIẾN KÊ</div>
-          <div className="text-xs mt-1 text-gray-300">Dinh dưỡng cao cấp</div>
-        </div>
+        {banners.map((b, idx) => {
+          const content = (
+            <div className={`bg-gradient-to-r ${MauBanner[idx]} text-white p-4 rounded-xl flex flex-col justify-center h-full`}>
+              <div className={`text-xs font-bold ${MauTieuDe[idx]} mb-1`}>{b.tieu_de}</div>
+              <div className="font-black text-lg leading-tight">{b.tieu_de}</div>
+              <div className="text-xs mt-1 text-gray-300">{b.tieu_de_phu}</div>
+            </div>
+          );
+          return b.link ? (
+            <a key={idx} href={b.link} target="_blank" rel="noopener noreferrer" className="hover:opacity-90 transition">
+              {content}
+            </a>
+          ) : (
+            <div key={idx}>{content}</div>
+          );
+        })}
       </div>
 
-      {/* SHOPEE AFFILIATE BANNER */}
-      <a href={shopeeLink} target="_blank" rel="noopener noreferrer"
-        className="block mb-6 cursor-pointer group">
+      {/* SHOPEE BANNER */}
+      <a href={shopeeLink} target="_blank" rel="noopener noreferrer" className="block mb-6 group">
         <div className="bg-gradient-to-r from-orange-500 to-orange-400 rounded-xl p-4 flex items-center gap-4 hover:opacity-95 transition shadow-sm">
           <div className="text-4xl">🛒</div>
           <div className="flex-1">
@@ -123,8 +134,7 @@ export default function HomePage() {
             <div className="text-orange-100 text-sm mt-0.5">Thức ăn • Thuốc bổ • Dụng cụ chăn nuôi • Giao hàng toàn quốc</div>
           </div>
           <div className="bg-white text-orange-500 font-black px-4 py-2 rounded-full text-sm group-hover:scale-105 transition flex items-center gap-1">
-            <span>Mua ngay</span>
-            <span>→</span>
+            Mua ngay →
           </div>
         </div>
       </a>
@@ -175,9 +185,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* SHOPEE INLINE BANNER */}
-      <a href={shopeeLink} target="_blank" rel="noopener noreferrer"
-        className="block mb-8 group">
+      {/* SHOPEE INLINE */}
+      <a href={shopeeLink} target="_blank" rel="noopener noreferrer" className="block mb-8 group">
         <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4 flex items-center gap-3 hover:border-orange-400 transition">
           <div className="text-3xl">🧴</div>
           <div className="flex-1">
