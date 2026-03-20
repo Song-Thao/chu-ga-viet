@@ -2,7 +2,7 @@
 import { useState } from 'react';
 
 export default function AIPhanTichPage() {
-  const [image, setImage] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState('');
@@ -15,20 +15,21 @@ export default function AIPhanTichPage() {
     '🤖 Tổng hợp kết quả...',
   ];
 
-  const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setImage(ev.target?.result as string);
-      setResult(null);
-      setError('');
-    };
-    reader.readAsDataURL(file);
+  const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.slice(0, 4).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setImages(prev => [...prev.slice(0, 3), ev.target?.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
+    setResult(null);
+    setError('');
   };
 
   const handleAnalyze = async () => {
-    if (!image) return;
+    if (images.length === 0) return;
     setLoading(true);
     setError('');
     setStep(0);
@@ -41,7 +42,7 @@ export default function AIPhanTichPage() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: image }),
+        body: JSON.stringify({ imageBase64: images[0] }),
       });
       const data = await res.json();
       setResult(data);
@@ -72,7 +73,7 @@ export default function AIPhanTichPage() {
       <div className="bg-gradient-to-r from-[#8B1A1A] to-red-700 text-white rounded-xl p-6 mb-6 text-center">
         <div className="text-4xl mb-2">🤖</div>
         <h1 className="font-black text-2xl mb-1">AI Tướng Gà</h1>
-        <p className="text-red-200 text-sm">Upload ảnh gà — AI phân tích tướng số trong vài giây</p>
+        <p className="text-red-200 text-sm">Upload 1-4 ảnh gà — AI phân tích tướng số chính xác hơn</p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -80,32 +81,60 @@ export default function AIPhanTichPage() {
         {/* UPLOAD */}
         <div className="space-y-4">
           <div className="bg-white rounded-xl p-4 shadow-sm">
-            <h2 className="font-bold text-gray-700 mb-3">📸 Upload ảnh gà</h2>
+            <h2 className="font-bold text-gray-700 mb-1">📸 Upload ảnh gà</h2>
+            <p className="text-xs text-gray-400 mb-3">Upload 4 ảnh: mặt, chân, thân, toàn thân — AI sẽ chính xác hơn</p>
 
-            <label className="block border-2 border-dashed border-red-300 rounded-xl cursor-pointer hover:border-red-500 hover:bg-red-50 transition overflow-hidden">
-              <input type="file" accept="image/*" className="hidden" onChange={handleImage} />
-              {image ? (
-                <img src={image} alt="Gà" className="w-full h-56 object-cover" />
-              ) : (
-                <div className="h-56 flex flex-col items-center justify-center text-gray-400">
-                  <div className="text-5xl mb-3">📷</div>
-                  <div className="text-sm font-semibold">Thả file vào đây hoặc nhấp để chọn ảnh gà</div>
-                  <div className="text-xs mt-1">JPG, PNG tối đa 10MB</div>
-                </div>
-              )}
-            </label>
+            {/* GRID 4 ÔNH */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {['Ảnh mặt gà', 'Ảnh chân + vảy', 'Ảnh thân gà', 'Ảnh toàn thân'].map((label, i) => (
+                <label key={i} className="relative cursor-pointer">
+                  <input type="file" accept="image/*" className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const newImages = [...images];
+                        newImages[i] = ev.target?.result as string;
+                        setImages(newImages);
+                        setResult(null);
+                      };
+                      reader.readAsDataURL(file);
+                    }} />
+                  {images[i] ? (
+                    <div className="relative">
+                      <img src={images[i]} alt="" className="w-full h-28 object-cover rounded-lg" />
+                      <div className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                        {label}
+                      </div>
+                      <div className="absolute top-1 right-1 bg-green-500 rounded-full w-5 h-5 flex items-center justify-center text-white text-xs">✓</div>
+                    </div>
+                  ) : (
+                    <div className="h-28 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center hover:border-red-400 hover:bg-red-50 transition">
+                      <div className="text-2xl mb-1">📷</div>
+                      <div className="text-xs text-gray-400 text-center px-1">{label}</div>
+                    </div>
+                  )}
+                </label>
+              ))}
+            </div>
 
-            {image && !loading && (
+            <div className="text-xs text-center text-gray-400 mb-3">
+              Đã upload: {images.filter(Boolean).length}/4 ảnh
+              {images.filter(Boolean).length >= 1 && <span className="text-green-600 ml-1">✓ Đủ để phân tích</span>}
+            </div>
+
+            {images.filter(Boolean).length > 0 && !loading && (
               <button onClick={handleAnalyze}
-                className="w-full mt-3 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition">
-                🤖 Phân tích ngay
+                className="w-full bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition">
+                🤖 Phân tích {images.filter(Boolean).length} ảnh ngay
               </button>
             )}
 
-            {image && (
-              <button onClick={() => { setImage(null); setResult(null); setError(''); }}
+            {images.filter(Boolean).length > 0 && (
+              <button onClick={() => { setImages([]); setResult(null); setError(''); }}
                 className="w-full mt-2 border-2 border-gray-300 text-gray-600 font-semibold py-2 rounded-xl hover:bg-gray-50 transition text-sm">
-                🔄 Upload ảnh khác
+                🔄 Xóa tất cả ảnh
               </button>
             )}
 
@@ -117,23 +146,19 @@ export default function AIPhanTichPage() {
           </div>
 
           {/* HƯỚNG DẪN */}
-          {!image && (
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h3 className="font-bold text-gray-700 mb-3">💡 Để có kết quả tốt nhất</h3>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li className="flex gap-2">✅ <span>Chụp rõ mặt, chân, thân gà</span></li>
-                <li className="flex gap-2">✅ <span>Ánh sáng đủ sáng</span></li>
-                <li className="flex gap-2">✅ <span>Gà đứng tự nhiên</span></li>
-                <li className="flex gap-2">❌ <span>Tránh ảnh mờ, tối</span></li>
-                <li className="flex gap-2">❌ <span>Tránh ảnh từ xa quá</span></li>
-              </ul>
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <h3 className="font-bold text-gray-700 mb-3">💡 Để có kết quả tốt nhất</h3>
+            <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+              <div className="bg-green-50 rounded-lg p-2">📷 <strong>Ảnh 1:</strong> Chụp cận mặt, mắt gà</div>
+              <div className="bg-green-50 rounded-lg p-2">📷 <strong>Ảnh 2:</strong> Chụp chân, vảy gà</div>
+              <div className="bg-green-50 rounded-lg p-2">📷 <strong>Ảnh 3:</strong> Chụp thân, lông gà</div>
+              <div className="bg-green-50 rounded-lg p-2">📷 <strong>Ảnh 4:</strong> Chụp toàn thân gà</div>
             </div>
-          )}
+          </div>
         </div>
 
         {/* KẾT QUẢ */}
         <div>
-          {/* LOADING */}
           {loading && (
             <div className="bg-white rounded-xl p-6 shadow-sm text-center">
               <div className="w-16 h-16 border-4 border-[#8B1A1A] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -146,11 +171,8 @@ export default function AIPhanTichPage() {
             </div>
           )}
 
-          {/* KẾT QUẢ */}
           {result && !loading && (
             <div className="space-y-4">
-
-              {/* TỔNG ĐIỂM */}
               <div className="bg-white rounded-xl p-4 shadow-sm">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="font-black text-gray-800">🤖 Kết quả AI</h3>
@@ -166,7 +188,6 @@ export default function AIPhanTichPage() {
                 <p className="text-sm text-gray-600 leading-relaxed">{result.nhan_xet}</p>
               </div>
 
-              {/* CHI TIẾT */}
               <div className="bg-white rounded-xl p-4 shadow-sm">
                 <h3 className="font-black text-gray-800 mb-3">📊 Phân tích chi tiết</h3>
                 <div className="space-y-3">
@@ -185,14 +206,12 @@ export default function AIPhanTichPage() {
                 </div>
               </div>
 
-              {/* GIÁ ĐỀ XUẤT */}
               <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-4">
                 <div className="font-bold text-gray-800 mb-1">💰 Giá đề xuất</div>
                 <div className="text-2xl font-black text-[#8B1A1A]">{result.gia_de_xuat} đ</div>
                 <div className="text-xs text-gray-500 mt-1">*Dựa trên phân tích AI, giá thực tế có thể khác</div>
               </div>
 
-              {/* BUTTONS */}
               <div className="flex gap-3">
                 <a href="/dang-ga" className="flex-1 bg-[#8B1A1A] text-white font-bold py-3 rounded-xl hover:bg-[#6B0F0F] transition text-sm text-center">
                   📋 Đăng bán với kết quả này
@@ -204,12 +223,11 @@ export default function AIPhanTichPage() {
             </div>
           )}
 
-          {/* PLACEHOLDER */}
-          {!image && !loading && !result && (
+          {images.filter(Boolean).length === 0 && !loading && !result && (
             <div className="bg-white rounded-xl p-6 shadow-sm text-center text-gray-400 h-64 flex flex-col items-center justify-center">
               <div className="text-5xl mb-3">🐓</div>
-              <div className="font-semibold">Upload ảnh gà để bắt đầu phân tích</div>
-              <div className="text-sm mt-1">AI sẽ đánh giá tướng số trong vài giây</div>
+              <div className="font-semibold">Upload ảnh gà để bắt đầu</div>
+              <div className="text-sm mt-1">Upload 4 ảnh để AI phân tích chính xác nhất</div>
             </div>
           )}
         </div>
