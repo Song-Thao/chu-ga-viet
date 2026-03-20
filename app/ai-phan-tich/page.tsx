@@ -1,24 +1,11 @@
 'use client';
 import { useState } from 'react';
 
-const KetQuaMau = {
-  tong_diem: 8.5,
-  nhan_xet: 'Gà có ngoại hình tốt, mắt sáng và linh hoạt. Chân vuông chắc, vảy đẹp. Đây là con gà có tiềm năng chiến đấu cao.',
-  chi_tiet: [
-    { phan: '👁 Mắt', diem: 9, mo_ta: 'Sáng, không bị sóng', mau: 'bg-green-500' },
-    { phan: '🦵 Chân', diem: 8.5, mo_ta: 'Chắc khỏe, không bị thương', mau: 'bg-green-500' },
-    { phan: '🐾 Vảy', diem: 8, mo_ta: 'Vảy đẹp, quý hiếm', mau: 'bg-yellow-500' },
-    { phan: '🐓 Đầu', diem: 8.5, mo_ta: 'Đẹp, sáng bóng', mau: 'bg-green-500' },
-    { phan: '💪 Thân', diem: 8, mo_ta: 'Cân đối, khỏe mạnh', mau: 'bg-yellow-500' },
-    { phan: '🪶 Lông', diem: 9, mo_ta: 'Mượt, bóng đẹp', mau: 'bg-green-500' },
-  ],
-  gia_de_xuat: '5.000.000 - 8.000.000',
-};
-
 export default function AIPhanTichPage() {
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<typeof KetQuaMau | null>(null);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState('');
   const [step, setStep] = useState(0);
 
   const LoadingSteps = [
@@ -35,31 +22,47 @@ export default function AIPhanTichPage() {
     reader.onload = (ev) => {
       setImage(ev.target?.result as string);
       setResult(null);
+      setError('');
     };
     reader.readAsDataURL(file);
   };
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!image) return;
     setLoading(true);
+    setError('');
     setStep(0);
+
     const interval = setInterval(() => {
-      setStep(prev => {
-        if (prev >= LoadingSteps.length - 1) {
-          clearInterval(interval);
-          setLoading(false);
-          setResult(KetQuaMau);
-          return prev;
-        }
-        return prev + 1;
-      });
+      setStep(prev => prev < LoadingSteps.length - 1 ? prev + 1 : prev);
     }, 800);
+
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: image }),
+      });
+      const data = await res.json();
+      setResult(data);
+    } catch (err) {
+      setError('Lỗi kết nối. Vui lòng thử lại!');
+    } finally {
+      clearInterval(interval);
+      setLoading(false);
+    }
   };
 
   const getDiemMau = (diem: number) => {
     if (diem >= 8.5) return 'text-green-600';
     if (diem >= 7) return 'text-yellow-600';
     return 'text-red-600';
+  };
+
+  const getBarMau = (diem: number) => {
+    if (diem >= 8.5) return 'bg-green-500';
+    if (diem >= 7) return 'bg-yellow-500';
+    return 'bg-red-500';
   };
 
   return (
@@ -92,18 +95,24 @@ export default function AIPhanTichPage() {
               )}
             </label>
 
-            {image && !loading && !result && (
+            {image && !loading && (
               <button onClick={handleAnalyze}
-                className="w-full mt-3 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition flex items-center justify-center gap-2">
+                className="w-full mt-3 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition">
                 🤖 Phân tích ngay
               </button>
             )}
 
-            {image && (result || loading) && (
-              <button onClick={() => { setImage(null); setResult(null); }}
-                className="w-full mt-3 border-2 border-gray-300 text-gray-600 font-semibold py-2 rounded-xl hover:bg-gray-50 transition text-sm">
+            {image && (
+              <button onClick={() => { setImage(null); setResult(null); setError(''); }}
+                className="w-full mt-2 border-2 border-gray-300 text-gray-600 font-semibold py-2 rounded-xl hover:bg-gray-50 transition text-sm">
                 🔄 Upload ảnh khác
               </button>
+            )}
+
+            {error && (
+              <div className="mt-3 bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg">
+                {error}
+              </div>
             )}
           </div>
 
@@ -161,14 +170,14 @@ export default function AIPhanTichPage() {
               <div className="bg-white rounded-xl p-4 shadow-sm">
                 <h3 className="font-black text-gray-800 mb-3">📊 Phân tích chi tiết</h3>
                 <div className="space-y-3">
-                  {result.chi_tiet.map(ct => (
+                  {result.chi_tiet?.map((ct: any) => (
                     <div key={ct.phan}>
                       <div className="flex justify-between items-center mb-1">
                         <span className="text-sm font-semibold text-gray-700">{ct.phan}</span>
                         <span className={`text-sm font-black ${getDiemMau(ct.diem)}`}>{ct.diem}/10</span>
                       </div>
                       <div className="h-2 bg-gray-200 rounded-full mb-1">
-                        <div className={`h-2 ${ct.mau} rounded-full transition-all`} style={{width: `${ct.diem * 10}%`}}></div>
+                        <div className={`h-2 ${getBarMau(ct.diem)} rounded-full`} style={{width: `${ct.diem * 10}%`}}></div>
                       </div>
                       <div className="text-xs text-gray-500">{ct.mo_ta}</div>
                     </div>
@@ -185,9 +194,9 @@ export default function AIPhanTichPage() {
 
               {/* BUTTONS */}
               <div className="flex gap-3">
-                <button className="flex-1 bg-[#8B1A1A] text-white font-bold py-3 rounded-xl hover:bg-[#6B0F0F] transition text-sm">
+                <a href="/dang-ga" className="flex-1 bg-[#8B1A1A] text-white font-bold py-3 rounded-xl hover:bg-[#6B0F0F] transition text-sm text-center">
                   📋 Đăng bán với kết quả này
-                </button>
+                </a>
                 <button className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50 transition text-sm">
                   💾 Lưu kết quả
                 </button>
