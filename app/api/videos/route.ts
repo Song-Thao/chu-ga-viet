@@ -8,7 +8,6 @@ const supabase = createClient(
 );
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Lấy YouTube video ID từ link
 function getYoutubeId(url: string): string | null {
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
@@ -21,17 +20,16 @@ function getYoutubeId(url: string): string | null {
   return null;
 }
 
-// GET — Lấy danh sách video
+// GET
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get('limit') || '12');
-    const status = searchParams.get('status') || 'active';
 
     const { data, error } = await supabase
       .from('videos')
       .select('*, profiles(username)')
-      .eq('status', status)
+      .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -42,7 +40,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST — Đăng video mới
+// POST
 export async function POST(req: NextRequest) {
   try {
     const { youtube_url, title, description, match_result, user_id } = await req.json();
@@ -51,7 +49,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Thiếu thông tin' }, { status: 400 });
     }
 
-    // Validate YouTube URL
     const videoId = getYoutubeId(youtube_url);
     if (!videoId) {
       return NextResponse.json({ error: 'Link YouTube không hợp lệ' }, { status: 400 });
@@ -59,30 +56,25 @@ export async function POST(req: NextRequest) {
 
     const embedUrl = `https://www.youtube.com/embed/${videoId}`;
 
-    // Lấy config
     const { data: cfg } = await supabase.from('config').select('mode_duyet').single();
     const modeDuyet = cfg?.mode_duyet || 'auto';
 
-    // AI viết lại tiêu đề + mô tả
-    let finalTitle = title;
-    let finalDesc = description;
+    let finalTitle = title || 'Video gà chọi';
+    let finalDesc = description || '';
 
     try {
       const aiRes = await openai.chat.completions.create({
         model: 'gpt-4o',
-        max_tokens: 300,
+        max_tokens: 200,
         messages: [{
           role: 'user',
-          content: `Bạn là dân chơi gà chọi miền Nam. Viết lại tiêu đề và mô tả hấp dẫn cho video gà chọi này.
+          content: `Viết lại tiêu đề và mô tả hấp dẫn cho video gà chọi theo kiểu dân chơi miền Tây.
 Tiêu đề gốc: "${title}"
 Mô tả gốc: "${description || 'Không có'}"
-Kết quả trận: ${match_result}
-
-Trả về JSON: {"title": "...", "description": "..."}
-Giữ ngắn gọn, dùng từ ngữ dân chơi gà miền Tây. KHÔNG bịa thông tin cụ thể.`
+Kết quả: ${match_result}
+Trả về JSON thuần: {"title": "...", "description": "..."}`
         }],
       });
-
       const content = aiRes.choices[0].message.content || '';
       const match = content.match(/\{[\s\S]*\}/);
       if (match) {
@@ -92,22 +84,15 @@ Giữ ngắn gọn, dùng từ ngữ dân chơi gà miền Tây. KHÔNG bịa th
       }
     } catch { /* giữ nguyên nếu AI lỗi */ }
 
-    // Xác định status
     const status = modeDuyet === 'auto' ? 'active' : 'pending';
 
     const { data, error } = await supabase
       .from('videos')
       .insert({
-        user_id,
-        youtube_url,
-        embed_url: embedUrl,
-        title: finalTitle,
-        description: finalDesc,
-        match_result,
-        status,
-        view_count: 0,
-        like_count: 0,
-        report_count: 0,
+        user_id, youtube_url, embed_url: embedUrl,
+        title: finalTitle, description: finalDesc,
+        match_result, status,
+        view_count: 0, like_count: 0, report_count: 0,
       })
       .select()
       .single();
@@ -120,49 +105,59 @@ Giữ ngắn gọn, dùng từ ngữ dân chơi gà miền Tây. KHÔNG bịa th
   }
 }
 
-// PATCH — Like / View / Report
+// PATCH
 export async function PATCH(req: NextRequest) {
   try {
     const { action, video_id, user_id, reason } = await req.json();
 
     if (action === 'view') {
-  const { data: v } = await supabase
-    .from('videos').select('view_count').eq('id', video_id).single();
-  await supabase
-    .from('videos').update({ view_count: (v?.view_count || 0) + 1 }).eq('id', video_id);
-  return NextResponse.json({ success: true });
-}
+      const { data: v } = await supabase
+        .from('videos').select('view_count').eq('id', video_id).single();
+      await supabase
+        .from('videos').update({ view_count: (v?.view_count || 0) + 1 }).eq('id', video_id);
       return NextResponse.json({ success: true });
     }
 
     if (action === 'like' && user_id) {
       const { data: existing } = await supabase
-        .from('video_likes').select('id').eq('video_id', video_id).eq('user_id', user_id).maybeSingle();
+        .from('video_likes').select('id')
+        .eq('video_id', video_id).eq('user_id', user_id).maybeSingle();
+
+      const { data: v } = await supabase
+        .from('videos').select('like_count').eq('id', video_id).single();
 
       if (existing) {
-        await supabase.from('video_likes').delete().eq('video_id', video_id).eq('user_id', user_id);
-        const { data: v } = await supabase.from('videos').select('like_count').eq('id', video_id).single();
-        await supabase.from('videos').update({ like_count: Math.max(0, (v?.like_count || 1) - 1) }).eq('id', video_id);
+        await supabase.from('video_likes').delete()
+          .eq('video_id', video_id).eq('user_id', user_id);
+        await supabase.from('videos')
+          .update({ like_count: Math.max(0, (v?.like_count || 1) - 1) }).eq('id', video_id);
         return NextResponse.json({ liked: false });
       } else {
         await supabase.from('video_likes').insert({ video_id, user_id });
-        const { data: v } = await supabase.from('videos').select('like_count').eq('id', video_id).single();
-        await supabase.from('videos').update({ like_count: (v?.like_count || 0) + 1 }).eq('id', video_id);
+        await supabase.from('videos')
+          .update({ like_count: (v?.like_count || 0) + 1 }).eq('id', video_id);
         return NextResponse.json({ liked: true });
       }
     }
 
     if (action === 'report' && user_id) {
-      await supabase.from('video_reports').insert({ video_id, user_id, reason: reason || 'Vi phạm' }).catch(() => {});
-      const { data: v } = await supabase.from('videos').select('report_count').eq('id', video_id).single();
+      await supabase.from('video_reports')
+        .insert({ video_id, user_id, reason: reason || 'Vi phạm' })
+        .then(() => {});
+
+      const { data: v } = await supabase
+        .from('videos').select('report_count').eq('id', video_id).single();
       const newCount = (v?.report_count || 0) + 1;
+
       const { data: cfg } = await supabase.from('config').select('report_threshold').single();
       const threshold = cfg?.report_threshold || 5;
 
       if (newCount >= threshold) {
-        await supabase.from('videos').update({ report_count: newCount, status: 'hidden' }).eq('id', video_id);
+        await supabase.from('videos')
+          .update({ report_count: newCount, status: 'hidden' }).eq('id', video_id);
       } else {
-        await supabase.from('videos').update({ report_count: newCount }).eq('id', video_id);
+        await supabase.from('videos')
+          .update({ report_count: newCount }).eq('id', video_id);
       }
       return NextResponse.json({ success: true });
     }
