@@ -168,17 +168,20 @@ export default function GaDetailPage() {
           </div>
 
           {/* BUTTONS */}
-          <div className="flex gap-3 mb-6 flex-wrap">
-            <button className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition min-w-[100px]">
-              🛒 Mua ngay
-            </button>
-            <button className="flex-1 border-2 border-[#8B1A1A] text-[#8B1A1A] font-bold py-3 rounded-xl hover:bg-red-50 transition min-w-[100px]">
-              💬 Trả giá
-            </button>
-            <button className="border-2 border-gray-300 text-gray-600 font-bold px-4 py-3 rounded-xl hover:bg-gray-50 transition">
-              📞 Liên hệ
-            </button>
-          </div>
+<div className="flex gap-3 mb-6 flex-wrap">
+  <Link href={`/chat/${ga.id}`}
+    className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition text-center min-w-[100px]">
+    🛒 Mua ngay
+  </Link>
+  <Link href={`/chat/${ga.id}`}
+    className="flex-1 border-2 border-[#8B1A1A] text-[#8B1A1A] font-bold py-3 rounded-xl hover:bg-red-50 transition text-center min-w-[100px]">
+    💬 Trả giá
+  </Link>
+  <Link href={`/chat/${ga.id}`}
+    className="border-2 border-gray-300 text-gray-600 font-bold px-4 py-3 rounded-xl hover:bg-gray-50 transition">
+    📞 Liên hệ
+  </Link>
+</div>
 
           {/* AI PHÂN TÍCH */}
           {aiData ? (
