@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 export default function AIPhanTichPage() {
   const [images, setImages] = useState<(string | null)[]>([null, null, null, null]);
@@ -9,12 +9,16 @@ export default function AIPhanTichPage() {
   const [step, setStep] = useState(0);
   const [speaking, setSpeaking] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [videoMode, setVideoMode] = useState(false);
+  const [videoFrames, setVideoFrames] = useState<string[]>([]);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const LoadingSteps = [
     '📷 Nhận diện từng ảnh...',
     '👁 Quan sát mắt, chân, vảy...',
-    '🐾 Đối chiếu từ điển tướng số...',
-    '📋 Tổng hợp kết quả thực tế...',
+    '🐾 Đối chiếu 92 loại vảy...',
+    '📋 Tổng hợp kết quả...',
   ];
 
   const handleImage = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,6 +35,44 @@ export default function AIPhanTichPage() {
     reader.readAsDataURL(file);
   };
 
+  // Trích frame từ video
+  const handleVideo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const video = videoRef.current;
+    if (!video) return;
+    video.src = url;
+    video.load();
+    video.onloadedmetadata = () => {
+      const duration = video.duration;
+      // Lấy 4 frame tại 0s, 1/3, 2/3, cuối
+      const times = [0.5, duration * 0.33, duration * 0.66, duration - 0.5];
+      const frames: string[] = [];
+      let done = 0;
+
+      times.forEach((t, i) => {
+        const v = document.createElement('video');
+        v.src = url;
+        v.currentTime = Math.min(t, duration - 0.1);
+        v.addEventListener('seeked', () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 640;
+          canvas.height = 360;
+          canvas.getContext('2d')?.drawImage(v, 0, 0, 640, 360);
+          frames[i] = canvas.toDataURL('image/jpeg', 0.8);
+          done++;
+          if (done === 4) {
+            setVideoFrames(frames);
+            setImages(frames as any);
+            setResult(null);
+            setError('');
+          }
+        }, { once: true });
+      });
+    };
+  };
+
   const stopSpeech = () => { window.speechSynthesis?.cancel(); setSpeaking(false); };
 
   const speakResult = (r: any) => {
@@ -38,9 +80,10 @@ export default function AIPhanTichPage() {
     stopSpeech();
     const text = `
       Kết quả phân tích ${r.so_anh} ảnh. Điểm: ${r.tong_diem} trên 10. Độ tin cậy: ${r.do_tin_cay} phần trăm.
-      Phần thấy rõ: ${r.chat_luong}.
+      Phần thấy rõ: ${r.phan_thay_ro}.
       Mắt: ${r.mat}. Chân: ${r.chan}.
       Vảy quan sát: ${r.vay_quan_sat}.
+      Hàng hậu độ kẽm: ${r.hau_do_kem}.
       Kết luận vảy: ${r.vay_ket_luan}. ${r.vay_y_nghia}.
       Nhận xét: ${r.nhan_xet_tong}.
       Giá đề xuất: ${r.gia_de_xuat} đồng.
@@ -92,18 +135,21 @@ export default function AIPhanTichPage() {
   const getDiemMau = (d: number) => d >= 8 ? 'text-green-600' : d >= 6.5 ? 'text-yellow-600' : 'text-red-500';
   const getBarMau = (d: number) => d >= 8 ? 'bg-green-500' : d >= 6.5 ? 'bg-yellow-500' : 'bg-red-500';
   const getVayStyle = (loai: string) =>
-    loai === 'tot' ? 'bg-green-50 border-green-300 text-green-800' :
-    loai === 'xau' ? 'bg-red-50 border-red-300 text-red-800' :
-    'bg-gray-50 border-gray-300 text-gray-700';
+    loai === 'tot' ? 'bg-green-50 border-green-300' :
+    loai === 'xau' ? 'bg-red-50 border-red-300' :
+    'bg-gray-50 border-gray-200';
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-4">
+      {/* hidden video element for frame extraction */}
+      <video ref={videoRef} className="hidden" crossOrigin="anonymous" />
+      <canvas ref={canvasRef} className="hidden" />
 
       {/* HEADER */}
       <div className="bg-gradient-to-r from-[#8B1A1A] to-red-700 text-white rounded-xl p-5 mb-5 text-center">
         <div className="text-4xl mb-1">🐓</div>
         <h1 className="font-black text-xl mb-1">AI Tướng Gà — Sư Kê Ảo</h1>
-        <p className="text-red-200 text-xs mb-3">Upload ảnh bất kỳ — AI tự nhận diện từng phần • Không cần đúng thứ tự</p>
+        <p className="text-red-200 text-xs mb-3">92 loại vảy chuẩn • AI tự nhận diện từng ảnh • Không cần đúng thứ tự</p>
         <button onClick={() => { setVoiceOn(!voiceOn); if (speaking) stopSpeech(); }}
           className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition ${voiceOn ? 'bg-white text-[#8B1A1A] border-white' : 'bg-transparent text-white/60 border-white/30'}`}>
           {voiceOn ? '🔊 Giọng đọc: BẬT' : '🔇 Giọng đọc: TẮT'}
@@ -115,44 +161,81 @@ export default function AIPhanTichPage() {
         {/* UPLOAD */}
         <div className="space-y-4">
           <div className="bg-white rounded-xl p-4 shadow-sm">
-            <h2 className="font-bold text-gray-700 mb-1">📸 Upload ảnh gà — không cần thứ tự</h2>
-            <p className="text-xs text-gray-400 mb-3">AI tự nhận diện từng ảnh là phần gì. Upload 1-4 ảnh đều được.</p>
 
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              {[0,1,2,3].map(i => (
-                <label key={i} className="cursor-pointer">
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImage(i, e)} />
-                  {images[i] ? (
-                    <div className="relative">
-                      <img src={images[i]!} alt="" className="w-full h-28 object-cover rounded-lg" />
-                      <div className="absolute top-1 right-1 bg-green-500 rounded-full w-5 h-5 flex items-center justify-center text-white text-xs">✓</div>
-                      <div className="absolute bottom-1 left-1 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">Ảnh {i+1}</div>
-                    </div>
-                  ) : (
-                    <div className="h-28 border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center justify-center hover:border-red-400 hover:bg-red-50 transition">
-                      <div className="text-xl mb-1">📷</div>
-                      <div className="text-xs text-gray-400">Ảnh {i+1}</div>
-                      <div className="text-xs text-gray-300">bất kỳ góc nào</div>
-                    </div>
-                  )}
-                </label>
-              ))}
+            {/* CHỌN CHẾ ĐỘ */}
+            <div className="flex gap-2 mb-3">
+              <button onClick={() => { setVideoMode(false); setVideoFrames([]); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${!videoMode ? 'bg-[#8B1A1A] text-white' : 'bg-gray-100 text-gray-600'}`}>
+                📷 Upload ảnh
+              </button>
+              <button onClick={() => setVideoMode(true)}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${videoMode ? 'bg-[#8B1A1A] text-white' : 'bg-gray-100 text-gray-600'}`}>
+                🎬 Upload video
+              </button>
             </div>
 
+            {/* UPLOAD ẢNH */}
+            {!videoMode && (
+              <>
+                <p className="text-xs text-gray-400 mb-3">Upload 1-4 ảnh bất kỳ góc nào — AI tự nhận diện</p>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {[0,1,2,3].map(i => (
+                    <label key={i} className="cursor-pointer">
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImage(i, e)} />
+                      {images[i] ? (
+                        <div className="relative">
+                          <img src={images[i]!} alt="" className="w-full h-28 object-cover rounded-lg" />
+                          <div className="absolute top-1 right-1 bg-green-500 rounded-full w-5 h-5 flex items-center justify-center text-white text-xs">✓</div>
+                          <div className="absolute bottom-1 left-1 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">Ảnh {i+1}</div>
+                        </div>
+                      ) : (
+                        <div className="h-28 border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center justify-center hover:border-red-400 hover:bg-red-50 transition">
+                          <div className="text-xl mb-1">📷</div>
+                          <div className="text-xs text-gray-300">Ảnh {i+1}</div>
+                        </div>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* UPLOAD VIDEO */}
+            {videoMode && (
+              <>
+                <p className="text-xs text-gray-400 mb-3">Upload video 5-15 giây — AI tự trích 4 frame để phân tích</p>
+                <label className="block border-2 border-dashed border-gray-300 rounded-xl p-4 text-center cursor-pointer hover:border-red-400 hover:bg-red-50 transition mb-3">
+                  <input type="file" accept="video/*" className="hidden" onChange={handleVideo} />
+                  <div className="text-3xl mb-2">🎬</div>
+                  <div className="text-sm text-gray-500">Nhấn để chọn video</div>
+                  <div className="text-xs text-gray-400 mt-1">MP4, MOV • Tối ưu 5-15 giây</div>
+                </label>
+                {videoFrames.length > 0 && (
+                  <div>
+                    <div className="text-xs text-green-600 font-semibold mb-2">✓ Đã trích {videoFrames.length} frame từ video</div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {videoFrames.map((f, i) => (
+                        <img key={i} src={f} alt="" className="w-full h-16 object-cover rounded" />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             <div className="text-xs text-center mb-3">
-              <span className="text-gray-400">Đã upload: {uploadedCount}/4</span>
-              {uploadedCount >= 1 && <span className="text-green-600 ml-1 font-semibold">✓ Sẵn sàng</span>}
-              {uploadedCount === 4 && <span className="text-blue-600 ml-1">🎯 Đủ 4 góc!</span>}
+              <span className="text-gray-400">Sẵn sàng: {uploadedCount} ảnh</span>
+              {uploadedCount === 4 && <span className="text-blue-600 ml-1 font-semibold">🎯 Đủ 4 góc!</span>}
             </div>
 
             {uploadedCount > 0 && !loading && (
               <button onClick={handleAnalyze}
                 className="w-full bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition">
-                🐓 Phân tích {uploadedCount} ảnh
+                🐓 Phân tích {uploadedCount} ảnh — đối chiếu 92 loại vảy
               </button>
             )}
             {uploadedCount > 0 && (
-              <button onClick={() => { setImages([null,null,null,null]); setResult(null); setError(''); stopSpeech(); }}
+              <button onClick={() => { setImages([null,null,null,null]); setVideoFrames([]); setResult(null); setError(''); stopSpeech(); }}
                 className="w-full mt-2 border border-gray-200 text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 transition">
                 🔄 Xóa tất cả
               </button>
@@ -161,13 +244,13 @@ export default function AIPhanTichPage() {
           </div>
 
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-            <h3 className="font-bold text-amber-800 mb-2 text-sm">💡 Gợi ý để AI phân tích chính xác nhất</h3>
+            <h3 className="font-bold text-amber-800 mb-2 text-sm">💡 Để AI xác định vảy chính xác</h3>
             <div className="space-y-1 text-xs text-amber-700">
-              <div>📷 Chụp cận mặt — thấy rõ mắt</div>
-              <div>📷 Chụp chân — rõ phần sát gối và ngang cựa</div>
-              <div>📷 Chụp thân — thấy lông và cánh</div>
-              <div>📷 Chụp toàn thân — gà đứng tự nhiên</div>
-              <div className="text-amber-500 mt-1">👉 Không cần đúng thứ tự — AI tự hiểu</div>
+              <div>📷 Ảnh chân rõ sát gối (Án Thiên/Phủ Địa)</div>
+              <div>📷 Ảnh rõ ngang cựa (Huyền Trâm/Song Phủ Đao)</div>
+              <div>📷 Ảnh rõ dưới ngón giữa (Ám Long)</div>
+              <div>📷 Ảnh toàn thân đứng tự nhiên</div>
+              <div className="text-amber-500 mt-1">🎬 Hoặc video 5-15 giây — AI tự trích frame</div>
             </div>
           </div>
         </div>
@@ -190,12 +273,12 @@ export default function AIPhanTichPage() {
           {result && !loading && (
             <div className="space-y-3">
 
-              {/* ĐIỂM + ĐỌC */}
+              {/* ĐIỂM */}
               <div className="bg-white rounded-xl p-4 shadow-sm">
                 <div className="flex justify-between items-start mb-1">
                   <div>
                     <h3 className="font-black text-gray-800">🏆 Kết luận sư kê</h3>
-                    <div className="text-xs text-gray-400">{result.so_anh} ảnh • Độ rõ trung bình: {result.do_ro}%</div>
+                    <div className="text-xs text-gray-400">{result.so_anh} ảnh • Độ rõ: {result.do_ro}%</div>
                   </div>
                   <div className={`text-3xl font-black ${getDiemMau(result.tong_diem)}`}>{result.tong_diem}/10</div>
                 </div>
@@ -218,25 +301,21 @@ export default function AIPhanTichPage() {
                 )}
               </div>
 
-              {/* AI ĐÃ NHẬN DIỆN ĐƯỢC GÌ */}
+              {/* AI NHẬN DIỆN */}
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
                 <div className="font-bold text-blue-700 text-xs mb-1">🔍 AI nhận diện từng ảnh</div>
                 <p className="text-xs text-gray-600">{result.nhan_dien_anh}</p>
-                {result.chat_luong && (
-                  <div className="mt-1.5 text-xs text-green-700"><span className="font-semibold">Thấy rõ:</span> {result.chat_luong}</div>
-                )}
-                {result.phan_khong_ro && (
-                  <div className="mt-0.5 text-xs text-orange-600"><span className="font-semibold">Chưa rõ:</span> {result.phan_khong_ro}</div>
-                )}
+                {result.phan_thay_ro && <div className="mt-1 text-xs text-green-700"><b>Thấy rõ:</b> {result.phan_thay_ro}</div>}
+                {result.phan_khong_ro && <div className="mt-0.5 text-xs text-orange-600"><b>Chưa rõ:</b> {result.phan_khong_ro}</div>}
               </div>
 
-              {/* MẮT + CHÂN + LÔNG */}
+              {/* NGOẠI HÌNH */}
               <div className="bg-white border border-gray-100 rounded-xl p-3">
                 <div className="font-bold text-gray-700 text-sm mb-2">👁 Nhận diện ngoại hình</div>
                 <div className="space-y-1.5 text-sm text-gray-600">
-                  <div><span className="font-semibold text-gray-700">Mắt:</span> {result.mat}</div>
-                  <div><span className="font-semibold text-gray-700">Chân:</span> {result.chan}</div>
-                  <div><span className="font-semibold text-gray-700">Lông/Dáng:</span> {result.long_dang}</div>
+                  <div><b className="text-gray-700">Mắt:</b> {result.mat}</div>
+                  <div><b className="text-gray-700">Chân:</b> {result.chan}</div>
+                  <div><b className="text-gray-700">Lông/Dáng:</b> {result.long_dang}</div>
                 </div>
               </div>
 
@@ -244,9 +323,17 @@ export default function AIPhanTichPage() {
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
                 <div className="font-bold text-yellow-700 text-sm mb-1">🐾 AI quan sát vảy</div>
                 <p className="text-sm text-gray-600 mb-2">{result.vay_quan_sat}</p>
+                {result.hau_do_kem && (
+                  <div className="text-xs text-gray-500 mb-2 bg-white rounded p-2 border border-yellow-100">
+                    <b>Hàng Hậu/Độ/Kẽm:</b> {result.hau_do_kem}
+                  </div>
+                )}
                 <div className={`rounded-lg p-2.5 border ${getVayStyle(result.vay_loai)}`}>
                   <div className="font-bold text-sm">{result.vay_ket_luan}</div>
-                  <div className="text-xs mt-0.5 opacity-80">{result.vay_y_nghia}</div>
+                  {result.tin_cay_vay && result.vay_ten && (
+                    <div className="text-xs text-gray-500 mt-0.5">Độ tin cậy: {result.tin_cay_vay}%</div>
+                  )}
+                  <div className="text-xs mt-0.5 text-gray-600">{result.vay_y_nghia}</div>
                 </div>
               </div>
 
@@ -266,7 +353,7 @@ export default function AIPhanTichPage() {
                 )}
               </div>
 
-              {/* NHẬN XÉT TỔNG */}
+              {/* NHẬN ĐỊNH */}
               {result.nhan_xet_tong && (
                 <div className="bg-purple-50 border border-purple-100 rounded-xl p-3">
                   <div className="font-bold text-purple-700 text-sm mb-1">🤖 Nhận định AI</div>
@@ -288,13 +375,13 @@ export default function AIPhanTichPage() {
                 <p className="text-sm text-gray-500">{result.yeu_cau_bo_sung}</p>
               </div>
 
-              <p className="text-xs text-gray-400 text-center italic px-2">{result.canh_bao}</p>
+              <p className="text-xs text-gray-400 text-center italic">{result.canh_bao}</p>
 
               <div className="flex gap-3">
                 <a href="/dang-ga" className="flex-1 bg-[#8B1A1A] text-white font-bold py-3 rounded-xl text-sm text-center hover:bg-[#6B0F0F] transition">
                   📋 Đăng bán ngay
                 </a>
-                <button onClick={() => { setImages([null,null,null,null]); setResult(null); stopSpeech(); }}
+                <button onClick={() => { setImages([null,null,null,null]); setVideoFrames([]); setResult(null); stopSpeech(); }}
                   className="flex-1 border border-gray-300 text-gray-600 font-bold py-3 rounded-xl text-sm hover:bg-gray-50 transition">
                   🔄 Phân tích gà khác
                 </button>
@@ -305,8 +392,8 @@ export default function AIPhanTichPage() {
           {uploadedCount === 0 && !loading && !result && (
             <div className="bg-white rounded-xl p-6 shadow-sm text-center h-64 flex flex-col items-center justify-center">
               <div className="text-5xl mb-3">🐓</div>
-              <div className="font-semibold text-gray-500">Upload ảnh để sư kê phân tích</div>
-              <div className="text-sm text-gray-400 mt-1">Upload bất kỳ góc nào — AI tự nhận diện</div>
+              <div className="font-semibold text-gray-500">Upload ảnh hoặc video để phân tích</div>
+              <div className="text-sm text-gray-400 mt-1">AI đối chiếu 92 loại vảy chuẩn dân chơi</div>
             </div>
           )}
         </div>
