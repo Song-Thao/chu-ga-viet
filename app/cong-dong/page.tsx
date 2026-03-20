@@ -116,23 +116,46 @@ export default function CongDongPage() {
   async function submitPost() {
     if (!postContent.trim() || !user) return;
     setSubmitting(true);
+
+    // Extract YouTube URL nếu user paste iframe HTML
+    let cleanYoutube = postYoutube.trim();
+    if (cleanYoutube.includes('<iframe')) {
+      const srcMatch = cleanYoutube.match(/src=["']([^"']+)["']/);
+      cleanYoutube = srcMatch ? srcMatch[1] : '';
+    }
+
+    // Insert bài viết (không join profiles ngay — tránh lỗi RLS)
     const { data, error } = await supabase
       .from('posts')
       .insert({
         user_id: user.id,
         content: postContent.trim(),
-        youtube_url: postYoutube.trim(),
+        youtube_url: cleanYoutube,
         like_count: 0,
         comment_count: 0,
         share_count: 0,
         report_count: 0,
         status: 'active',
       })
-      .select('*, profiles(full_name, avatar_url)')
+      .select()
       .single();
 
-    if (!error && data) {
-      setPosts(prev => [data as Post, ...prev]);
+    if (error) {
+      alert(`❌ Lỗi đăng bài: ${error.message}`);
+      setSubmitting(false);
+      return;
+    }
+
+    if (data) {
+      // Gắn thông tin user hiện tại vào bài vừa đăng để hiện ngay
+      const newPost: Post = {
+        ...data,
+        profiles: {
+          full_name: user.user_metadata?.full_name || 'Bạn',
+          avatar_url: user.user_metadata?.avatar_url || '',
+        },
+      };
+      setPosts(prev => [newPost, ...prev]);
       setPostContent('');
       setPostYoutube('');
       setShowPopup(false);
@@ -236,16 +259,19 @@ export default function CongDongPage() {
             <input
               value={postYoutube}
               onChange={e => setPostYoutube(e.target.value)}
-              placeholder="🎬 Link YouTube (không bắt buộc)"
-              style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '10px 14px', fontSize: 14, marginTop: 8, boxSizing: 'border-box', outline: 'none' }}
+              placeholder="🎬 Dán link YouTube: https://youtu.be/... (không bắt buộc)"
+              style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 8, boxSizing: 'border-box', outline: 'none', color: '#555' }}
             />
+            <p style={{ fontSize: 11, color: '#999', margin: '4px 0 0 4px' }}>
+              💡 Hỗ trợ link YouTube thường, youtu.be, hoặc paste iframe embed
+            </p>
             {/* Submit */}
             <button
               onClick={submitPost}
               disabled={submitting || !postContent.trim()}
-              style={{ width: '100%', marginTop: 16, padding: '12px', background: postContent.trim() ? '#c0392b' : '#ccc', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: postContent.trim() ? 'pointer' : 'not-allowed' }}
+              style={{ width: '100%', marginTop: 14, padding: '13px', background: submitting ? '#e88' : postContent.trim() ? '#c0392b' : '#ccc', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: postContent.trim() && !submitting ? 'pointer' : 'not-allowed', transition: 'background 0.2s' }}
             >
-              {submitting ? 'Đang đăng...' : '🚀 Đăng bài'}
+              {submitting ? '⏳ Đang đăng bài...' : '🚀 Đăng bài'}
             </button>
           </div>
         </div>
