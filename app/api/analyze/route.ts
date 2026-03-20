@@ -5,57 +5,56 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const fallback = {
-  tong_diem: 7.5,
-  nhan_xet: 'Không thể phân tích ảnh. Vui lòng thử lại với ảnh rõ hơn.',
-  chi_tiet: [
-    { phan: '👁 Mắt', diem: 7.5, mo_ta: 'Cần ảnh rõ hơn để phân tích' },
-    { phan: '🦵 Chân', diem: 7.5, mo_ta: 'Cần ảnh rõ hơn để phân tích' },
-    { phan: '🐾 Vảy', diem: 7.5, mo_ta: 'Cần ảnh rõ hơn để phân tích' },
-    { phan: '🐓 Đầu', diem: 7.5, mo_ta: 'Cần ảnh rõ hơn để phân tích' },
-    { phan: '💪 Thân', diem: 7.5, mo_ta: 'Cần ảnh rõ hơn để phân tích' },
-    { phan: '🪶 Lông', diem: 7.5, mo_ta: 'Cần ảnh rõ hơn để phân tích' },
-  ],
-  gia_de_xuat: '3.000.000 - 5.000.000'
-};
+const SYSTEM_PROMPT = `Bạn là một sư kê gà chọi Việt Nam có hơn 20 năm kinh nghiệm thực chiến.
+Nhiệm vụ của bạn:
+- Phân tích gà dựa trên hình ảnh người dùng cung cấp
+- Sử dụng thuật ngữ chuyên môn của giới chơi gà Việt Nam
+- KHÔNG được phán bừa hoặc khẳng định 100%
+- Nếu không chắc chắn phải nói rõ: "có dấu hiệu", "nghi ngờ", "cần ảnh rõ hơn"
+
+KIẾN THỨC BẮT BUỘC PHẢI ÁP DỤNG:
+Các loại vảy tốt:
+- Án Thiên: vảy lớn sát gối → ra đòn chính xác, hiểm
+- Phủ Địa: vảy sát chậu → gà bền, lì
+- Huyền Trâm: vảy nhỏ ngang cựa → gà tài, đòn độc
+- Khai Vương: 4 vảy tạo chữ Vương → quý tướng
+- Ám Long: vảy ẩn ngón giữa → hiếm, rất hay
+- Gạc Thập: hình chữ thập → đá tàn
+Các loại vảy xấu:
+- Tứ Hoành Khai: dễ bỏ chạy
+- Dậm Chậu: yếu
+- Rọc Chậu: không bền
+- Liên Giáp: tướng xấu`;
+
+const USER_PROMPT = `Phân tích con gà trong ảnh theo đúng format sau, trả về JSON thuần không có backtick:
+
+{"nhan_dien":"mô tả mắt, chân, vảy thấy được từ ảnh","phan_tich_vay":"phân tích vảy với từ có dấu hiệu hoặc nghi ngờ","nhan_dinh":"giải thích theo dân chơi gà miền Tây","loi_da":"đá bền / đá nhanh / đá hiểm với lý do ngắn","canh_bao":"điểm chưa chắc, thiếu góc, nhắc phụ thuộc nuôi luyện","tong_diem":8.5,"do_tin_cay":75,"gia_de_xuat":"6.000.000 - 10.000.000","ly_do_gia":"giải thích ngắn tại sao giá này"}
+
+Thang giá theo điểm:
+- Dưới 6: 500k - 1.5tr
+- 6.0-6.9: 1.5tr - 3tr
+- 7.0-7.9: 3tr - 6tr
+- 8.0-8.9: 6tr - 15tr
+- 9.0-10: 15tr - 30tr`;
 
 export async function POST(req: NextRequest) {
   try {
     const { imageBase64 } = await req.json();
 
     if (!imageBase64) {
-      return NextResponse.json(fallback);
+      return NextResponse.json({ error: 'Không có ảnh' }, { status: 400 });
     }
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
-      max_tokens: 1000,
+      max_tokens: 1500,
       messages: [
-        {
-          role: 'system',
-          content: 'Bạn là chuyên gia xem tướng gà chiến Việt Nam 20 năm kinh nghiệm. Chỉ trả về JSON thuần, không markdown, không backtick, không giải thích thêm.'
-        },
+        { role: 'system', content: SYSTEM_PROMPT },
         {
           role: 'user',
           content: [
-            {
-              type: 'text',
-              text: `Phân tích kỹ con gà trong ảnh dựa trên tướng số thực tế. 
-
-Thang điểm giá theo tổng điểm:
-- Dưới 6 điểm: 500.000 - 1.500.000đ
-- 6.0 - 6.9: 1.500.000 - 3.000.000đ  
-- 7.0 - 7.9: 3.000.000 - 6.000.000đ
-- 8.0 - 8.9: 6.000.000 - 15.000.000đ
-- 9.0 - 10: 15.000.000 - 30.000.000đ
-
-Trả về JSON này (không có backtick):
-{"tong_diem":8.5,"nhan_xet":"nhận xét chi tiết về tướng số con gà dựa trên ảnh thực tế","chi_tiet":[{"phan":"👁 Mắt","diem":9,"mo_ta":"mô tả thực tế mắt gà"},{"phan":"🦵 Chân","diem":8,"mo_ta":"mô tả thực tế chân gà"},{"phan":"🐾 Vảy","diem":7.5,"mo_ta":"mô tả thực tế vảy gà"},{"phan":"🐓 Đầu","diem":8.5,"mo_ta":"mô tả thực tế đầu gà"},{"phan":"💪 Thân","diem":8,"mo_ta":"mô tả thực tế thân gà"},{"phan":"🪶 Lông","diem":8,"mo_ta":"mô tả thực tế lông gà"}],"gia_de_xuat":"X.000.000 - Y.000.000"}`
-            },
-            {
-              type: 'image_url',
-              image_url: { url: imageBase64 },
-            },
+            { type: 'text', text: USER_PROMPT },
+            { type: 'image_url', image_url: { url: imageBase64 } },
           ],
         },
       ],
@@ -73,11 +72,11 @@ Trả về JSON này (không có backtick):
         const result = JSON.parse(match[0]);
         return NextResponse.json(result);
       }
-      return NextResponse.json(fallback);
+      return NextResponse.json({ error: 'Không parse được kết quả' }, { status: 500 });
     }
 
   } catch (error: any) {
     console.error('AI Error:', error?.message || error);
-    return NextResponse.json(fallback);
+    return NextResponse.json({ error: error?.message }, { status: 500 });
   }
 }
