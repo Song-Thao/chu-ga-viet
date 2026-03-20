@@ -9,6 +9,9 @@ export default function ConvChatPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [conv, setConv] = useState<any>(null);
+  const [ga, setGa] = useState<any>(null);
+  const [doiPhuong, setDoiPhuong] = useState<any>(null);
+  const [isBuyer, setIsBuyer] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMsg, setNewMsg] = useState('');
   const [loading, setLoading] = useState(true);
@@ -26,24 +29,35 @@ export default function ConvChatPage() {
       // Lấy conversation
       const { data: convData } = await supabase
         .from('conversations')
-        .select(`
-          id, ga_id, buyer_id, seller_id,
-          ga (id, ten, gia, ga_images (url, is_primary)),
-          buyer:profiles!conversations_buyer_id_fkey (username),
-          seller:profiles!conversations_seller_id_fkey (username)
-        `)
+        .select('id, ga_id, buyer_id, seller_id')
         .eq('id', convId)
         .single();
 
       if (!convData) { setLoading(false); return; }
-
-      // Kiểm tra quyền
       if (convData.buyer_id !== user.id && convData.seller_id !== user.id) {
         router.push('/tin-nhan');
         return;
       }
 
       setConv(convData);
+      setIsBuyer(convData.buyer_id === user.id);
+
+      // Lấy gà
+      const { data: gaData } = await supabase
+        .from('ga')
+        .select('id, ten, gia, ga_images(url, is_primary)')
+        .eq('id', convData.ga_id)
+        .single();
+      setGa(gaData);
+
+      // Lấy đối phương
+      const doiPhuongId = convData.buyer_id === user.id ? convData.seller_id : convData.buyer_id;
+      const { data: dp } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', doiPhuongId)
+        .maybeSingle();
+      setDoiPhuong(dp);
 
       // Lấy messages
       const { data: msgs } = await supabase
@@ -56,7 +70,7 @@ export default function ConvChatPage() {
 
       // Realtime
       supabase
-        .channel(`conv-detail-${convId}`)
+        .channel(`conv-${convId}`)
         .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
@@ -64,7 +78,7 @@ export default function ConvChatPage() {
           filter: `conversation_id=eq.${convId}`,
         }, (payload) => {
           setMessages(prev => {
-            if (prev.find(m => m.id === payload.new.id)) return prev;
+            if (prev.find((m: any) => m.id === payload.new.id)) return prev;
             return [...prev, payload.new];
           });
         })
@@ -101,9 +115,6 @@ export default function ConvChatPage() {
     </div>
   );
 
-  const ga = conv.ga;
-  const isBuyer = conv.buyer_id === user?.id;
-  const doiPhuong = isBuyer ? conv.seller : conv.buyer;
   const anhGa = ga?.ga_images?.find((i: any) => i.is_primary)?.url || ga?.ga_images?.[0]?.url;
 
   return (
@@ -112,21 +123,18 @@ export default function ConvChatPage() {
       {/* HEADER */}
       <div className="bg-white rounded-xl shadow-sm p-3 mb-3 flex items-center gap-3 flex-shrink-0">
         <Link href="/tin-nhan" className="text-gray-400 hover:text-gray-600 text-lg">←</Link>
-
         {anhGa ? (
           <img src={anhGa} alt="" className="w-10 h-10 object-cover rounded-lg flex-shrink-0" />
         ) : (
           <div className="w-10 h-10 bg-orange-800 rounded-lg flex items-center justify-center text-xl flex-shrink-0">🐓</div>
         )}
-
         <div className="flex-1 min-w-0">
           <div className="font-bold text-sm text-gray-800 truncate">{ga?.ten}</div>
           <div className="text-xs text-gray-500">
             {isBuyer ? `Người bán: ${doiPhuong?.username || 'Ẩn'}` : `Người mua: ${doiPhuong?.username || 'Ẩn'}`}
           </div>
         </div>
-
-        <Link href={`/ga/${conv.ga_id}`}
+        <Link href={`/ga/${conv?.ga_id}`}
           className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-full hover:bg-gray-200 transition whitespace-nowrap">
           Xem gà
         </Link>
@@ -137,10 +145,10 @@ export default function ConvChatPage() {
         {messages.length === 0 && (
           <div className="text-center py-8 text-gray-400">
             <div className="text-3xl mb-2">👋</div>
-            <div className="text-sm">Bắt đầu trò chuyện</div>
+            <div className="text-sm mb-3">Bắt đầu trò chuyện</div>
             {!isBuyer && (
-              <div className="flex gap-2 justify-center mt-3 flex-wrap">
-                {['Gà vẫn còn bán bạn nhé!', 'Giá có thể thương lượng thêm', 'Bạn muốn xem thêm ảnh không?'].map(q => (
+              <div className="flex gap-2 justify-center flex-wrap">
+                {['Gà vẫn còn bán bạn nhé!', 'Giá có thể thương lượng', 'Bạn muốn xem thêm ảnh không?'].map(q => (
                   <button key={q} onClick={() => sendMessage(q)}
                     className="bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-full hover:bg-gray-200 transition">
                     {q}
