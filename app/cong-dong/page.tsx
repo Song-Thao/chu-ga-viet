@@ -1,12 +1,14 @@
 'use client';
-import { useState, useEffect } from 'react';
+
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import Link from 'next/link';
 
-const KetQuaLabel: any = {
-  thang: '🏆 Thắng', thua: '❌ Thua', xo: '🤝 Xổ', tap_luyen: '💪 Tập luyện'
-};
-
+// ============================================================
+// HELPERS
+// ============================================================
 function getYoutubeId(url: string): string | null {
+  if (!url) return null;
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
     /youtube\.com\/shorts\/([^&\n?#]+)/,
@@ -18,467 +20,494 @@ function getYoutubeId(url: string): string | null {
   return null;
 }
 
+function timeAgo(dateStr: string): string {
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diff < 60) return 'vừa xong';
+  if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+  return `${Math.floor(diff / 86400)} ngày trước`;
+}
+
+function formatNum(n: number): string {
+  if (n >= 1000) return (n / 1000).toFixed(1).replace('.0', '') + 'K';
+  return String(n);
+}
+
+// ============================================================
+// TYPES
+// ============================================================
+interface Post {
+  id: string;
+  user_id: string;
+  content: string;
+  youtube_url: string;
+  like_count: number;
+  comment_count: number;
+  share_count: number;
+  report_count: number;
+  status: string;
+  created_at: string;
+  profiles?: { full_name: string; avatar_url: string };
+}
+
+interface Comment {
+  id: string;
+  post_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  profiles?: { full_name: string; avatar_url: string };
+}
+
+// ============================================================
+// MAIN PAGE
+// ============================================================
 export default function CongDongPage() {
-  const [tab, setTab] = useState<'feed' | 'video'>('feed');
   const [user, setUser] = useState<any>(null);
-  const [posts, setPosts] = useState<any[]>([]);
-  const [videos, setVideos] = useState<any[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [comments, setComments] = useState<Record<string, Comment[]>>({});
+  const [likedPosts, setLikedPosts] = useState<Record<string, boolean>>({});
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  const [showPopup, setShowPopup] = useState(false);
+  const [postContent, setPostContent] = useState('');
+  const [postYoutube, setPostYoutube] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showPostForm, setShowPostForm] = useState(false);
-  const [showVideoForm, setShowVideoForm] = useState(false);
-  const [activeVideo, setActiveVideo] = useState<number | null>(null);
-  const [likedVideos, setLikedVideos] = useState<Set<number>>(new Set());
-  const [likedPosts, setLikedPosts] = useState<Set<number>>(new Set());
-  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
-  const [comments, setComments] = useState<Record<number, any[]>>({});
-  const [newComment, setNewComment] = useState<Record<number, string>>({});
-  const [reportingId, setReportingId] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState<'newest' | 'hot'>('newest');
+  const popupRef = useRef<HTMLDivElement>(null);
 
-  // Form bài viết
-  const [postForm, setPostForm] = useState({ noi_dung: '', image_url: '' });
-  const [postImage, setPostImage] = useState<string | null>(null);
-  const [postSubmitting, setPostSubmitting] = useState(false);
-
-  // Form video
-  const [videoForm, setVideoForm] = useState({
-    youtube_url: '', title: '', description: '', match_result: 'tap_luyen'
-  });
-  const [videoSubmitting, setVideoSubmitting] = useState(false);
-  const [videoSubmitResult, setVideoSubmitResult] = useState<any>(null);
-  const [urlError, setUrlError] = useState('');
-
+  // ── Auth ──────────────────────────────────────────────────
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user));
-    fetchPosts();
-    fetchVideos();
+    supabase.auth.getUser().then(({ data }) => setUser(data?.user ?? null));
   }, []);
 
-  const fetchPosts = async () => {
-    const { data } = await supabase
+  // ── Load posts ────────────────────────────────────────────
+  useEffect(() => {
+    fetchPosts();
+  }, [sortBy]);
+
+  async function fetchPosts() {
+    setLoading(true);
+    let query = supabase
       .from('posts')
-      .select('*, profiles(username)')
-      .order('created_at', { ascending: false })
-      .limit(20);
-    setPosts(data || []);
+      .select('*, profiles(full_name, avatar_url)')
+      .eq('status', 'active');
+
+    if (sortBy === 'newest') query = query.order('created_at', { ascending: false });
+    else query = query.order('like_count', { ascending: false });
+
+    const { data, error } = await query.limit(30);
+    if (!error && data) setPosts(data as Post[]);
     setLoading(false);
-  };
+  }
 
-  const fetchVideos = async () => {
-    const res = await fetch('/api/videos?limit=12');
-    const data = await res.json();
-    setVideos(data.data || []);
-  };
-
-  const fetchComments = async (postId: number) => {
+  // ── Load comments for a post ──────────────────────────────
+  async function fetchComments(postId: string) {
     const { data } = await supabase
       .from('comments')
-      .select('*, profiles(username)')
-      .eq('ga_id', postId)
-      .order('created_at', { ascending: true })
-      .limit(10);
-    setComments(prev => ({ ...prev, [postId]: data || [] }));
-  };
+      .select('*, profiles(full_name, avatar_url)')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true });
+    if (data) setComments(prev => ({ ...prev, [postId]: data as Comment[] }));
+  }
 
-  const toggleComments = async (postId: number) => {
-    if (!expandedComments.has(postId)) {
-      await fetchComments(postId);
+  // ── Submit post ───────────────────────────────────────────
+  async function submitPost() {
+    if (!postContent.trim() || !user) return;
+    setSubmitting(true);
+    const { data, error } = await supabase
+      .from('posts')
+      .insert({
+        user_id: user.id,
+        content: postContent.trim(),
+        youtube_url: postYoutube.trim(),
+        like_count: 0,
+        comment_count: 0,
+        share_count: 0,
+        report_count: 0,
+        status: 'active',
+      })
+      .select('*, profiles(full_name, avatar_url)')
+      .single();
+
+    if (!error && data) {
+      setPosts(prev => [data as Post, ...prev]);
+      setPostContent('');
+      setPostYoutube('');
+      setShowPopup(false);
     }
-    setExpandedComments(prev => {
-      const next = new Set(prev);
-      next.has(postId) ? next.delete(postId) : next.add(postId);
-      return next;
-    });
-  };
+    setSubmitting(false);
+  }
 
-  const submitComment = async (postId: number) => {
-    if (!user || !newComment[postId]?.trim()) return;
-    const { data } = await supabase.from('comments').insert({
-      ga_id: postId, user_id: user.id, noi_dung: newComment[postId]
-    }).select('*, profiles(username)').single();
+  // ── Like ──────────────────────────────────────────────────
+  async function likePost(postId: string) {
+    if (!user) return;
+    const already = likedPosts[postId];
+    setLikedPosts(prev => ({ ...prev, [postId]: !already }));
+    setPosts(prev =>
+      prev.map(p =>
+        p.id === postId ? { ...p, like_count: p.like_count + (already ? -1 : 1) } : p
+      )
+    );
+    await supabase.rpc('toggle_like', { post_id: postId, delta: already ? -1 : 1 });
+  }
+
+  // ── Comment ───────────────────────────────────────────────
+  async function submitComment(postId: string) {
+    const text = commentInputs[postId]?.trim();
+    if (!text || !user) return;
+    const { data } = await supabase
+      .from('comments')
+      .insert({ post_id: postId, user_id: user.id, content: text })
+      .select('*, profiles(full_name, avatar_url)')
+      .single();
     if (data) {
-      setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), data] }));
-      setNewComment(prev => ({ ...prev, [postId]: '' }));
+      setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), data as Comment] }));
+      setPosts(prev =>
+        prev.map(p => p.id === postId ? { ...p, comment_count: p.comment_count + 1 } : p)
+      );
+      setCommentInputs(prev => ({ ...prev, [postId]: '' }));
     }
-  };
+  }
 
-  const handlePostImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setPostImage(ev.target?.result as string);
-    reader.readAsDataURL(file);
-  };
+  // ── Share ─────────────────────────────────────────────────
+  function sharePost(postId: string) {
+    const url = `${window.location.origin}/cong-dong?post=${postId}`;
+    navigator.clipboard?.writeText(url).then(() => alert('✅ Đã copy link bài viết!'));
+  }
 
-  const submitPost = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !postForm.noi_dung.trim()) return;
-    setPostSubmitting(true);
-    await supabase.from('posts').insert({
-      user_id: user.id,
-      noi_dung: postForm.noi_dung,
-      image_url: postImage || null,
-    });
-    setPostForm({ noi_dung: '', image_url: '' });
-    setPostImage(null);
-    setShowPostForm(false);
-    setPostSubmitting(false);
-    await fetchPosts();
-  };
-
-  const likePost = async (postId: number) => {
+  // ── Report ────────────────────────────────────────────────
+  async function reportPost(postId: string) {
     if (!user) return;
-    const isLiked = likedPosts.has(postId);
-    setLikedPosts(prev => { const n = new Set(prev); isLiked ? n.delete(postId) : n.add(postId); return n; });
-    setPosts(prev => prev.map(p => p.id === postId ? { ...p, likes: (p.likes || 0) + (isLiked ? -1 : 1) } : p));
-    await supabase.from('posts').update({ likes: posts.find(p => p.id === postId)?.likes + (isLiked ? -1 : 1) }).eq('id', postId);
-  };
+    await supabase.rpc('report_post', { post_id: postId });
+    alert('Đã báo cáo bài viết. Cảm ơn bạn!');
+  }
 
-  const validateUrl = (url: string) => {
-    setUrlError(getYoutubeId(url) ? '' : url ? 'Link không hợp lệ — cần link YouTube' : '');
-  };
+  // ── Toggle comments section ───────────────────────────────
+  function toggleComments(postId: string) {
+    const next = !expandedComments[postId];
+    setExpandedComments(prev => ({ ...prev, [postId]: next }));
+    if (next && !comments[postId]) fetchComments(postId);
+  }
 
-  const submitVideo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !getYoutubeId(videoForm.youtube_url)) return;
-    setVideoSubmitting(true);
-    const res = await fetch('/api/videos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...videoForm, user_id: user.id }),
-    });
-    const data = await res.json();
-    if (!data.error) {
-      setVideoSubmitResult(data);
-      setVideoForm({ youtube_url: '', title: '', description: '', match_result: 'tap_luyen' });
-      setTimeout(() => { setShowVideoForm(false); setVideoSubmitResult(null); fetchVideos(); }, 3000);
+  // ── Close popup on outside click ──────────────────────────
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        setShowPopup(false);
+      }
     }
-    setVideoSubmitting(false);
-  };
+    if (showPopup) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showPopup]);
 
-  const likeVideo = async (videoId: number) => {
-    if (!user) { alert('Vui lòng đăng nhập'); return; }
-    const res = await fetch('/api/videos', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'like', video_id: videoId, user_id: user.id }),
-    });
-    const data = await res.json();
-    setLikedVideos(prev => { const n = new Set(prev); data.liked ? n.add(videoId) : n.delete(videoId); return n; });
-    setVideos(prev => prev.map(v => v.id === videoId ? { ...v, like_count: data.liked ? v.like_count + 1 : Math.max(0, v.like_count - 1) } : v));
-  };
+  const userAvatar = user?.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.user_metadata?.full_name || 'U')}&background=8B0000&color=fff`;
+  const userName = user?.user_metadata?.full_name || 'Bạn';
 
-  const handleReport = async (videoId: number, reason: string) => {
-    if (!user) return;
-    await fetch('/api/videos', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'report', video_id: videoId, user_id: user.id, reason }),
-    });
-    setReportingId(null);
-    alert('Đã báo cáo. Cảm ơn bạn!');
-  };
-
-  const timeAgo = (date: string) => {
-    const d = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
-    if (d < 60) return 'vừa xong';
-    if (d < 3600) return `${Math.floor(d/60)} phút trước`;
-    if (d < 86400) return `${Math.floor(d/3600)} giờ trước`;
-    return `${Math.floor(d/86400)} ngày trước`;
-  };
-
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
-    <div className="max-w-4xl mx-auto px-4 py-4">
+    <div style={{ backgroundColor: '#f0f2f5', minHeight: '100vh', fontFamily: "'Segoe UI', sans-serif" }}>
 
-      {/* HEADER */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="font-black text-xl text-gray-800">👥 Cộng đồng Chủ Gà Việt</h1>
-        <div className="flex gap-2">
-          <button onClick={() => { setShowPostForm(!showPostForm); setShowVideoForm(false); }}
-            className="bg-[#8B1A1A] text-white text-sm font-bold px-3 py-2 rounded-xl hover:bg-[#6B0F0F] transition">
-            ✍️ Đăng bài
-          </button>
-          <button onClick={() => { setShowVideoForm(!showVideoForm); setShowPostForm(false); }}
-            className="bg-gray-700 text-white text-sm font-bold px-3 py-2 rounded-xl hover:bg-gray-800 transition">
-            🎬 Video
-          </button>
-        </div>
-      </div>
-
-      {/* FORM ĐĂNG BÀI */}
-      {showPostForm && (
-        <div className="bg-white rounded-xl shadow-sm p-4 mb-4 border border-red-100">
-          <h3 className="font-bold text-gray-700 mb-3">✍️ Đăng bài viết</h3>
-          <form onSubmit={submitPost} className="space-y-3">
-            <textarea value={postForm.noi_dung} onChange={e => setPostForm({...postForm, noi_dung: e.target.value})}
-              placeholder="Chia sẻ kinh nghiệm, hỏi đáp về gà chọi..."
-              rows={4} className="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none" />
-            <label className="block cursor-pointer">
-              <input type="file" accept="image/*" className="hidden" onChange={handlePostImage} />
-              <div className="border-2 border-dashed border-gray-200 rounded-xl p-3 text-center hover:border-red-300 hover:bg-red-50 transition">
-                {postImage ? (
-                  <img src={postImage} alt="" className="w-full h-40 object-cover rounded-lg" />
-                ) : (
-                  <div className="text-gray-400 text-sm">📷 Thêm ảnh (tùy chọn)</div>
-                )}
-              </div>
-            </label>
-            <div className="flex gap-2">
-              <button type="submit" disabled={postSubmitting || !postForm.noi_dung.trim()}
-                className="flex-1 bg-[#8B1A1A] text-white font-bold py-2 rounded-xl hover:bg-[#6B0F0F] transition disabled:opacity-50 text-sm">
-                {postSubmitting ? '⏳ Đang đăng...' : '📝 Đăng bài'}
-              </button>
-              <button type="button" onClick={() => { setShowPostForm(false); setPostImage(null); }}
-                className="border border-gray-300 text-gray-600 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 transition">
-                Hủy
-              </button>
+      {/* ── POPUP ĐĂNG BÀI ────────────────────────────────── */}
+      {showPopup && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div ref={popupRef} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 520, padding: 24, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid #e4e6ea', paddingBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Tạo bài viết</h3>
+              <button onClick={() => setShowPopup(false)} style={{ background: '#e4e6ea', border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', fontSize: 18 }}>×</button>
             </div>
-          </form>
+            {/* User info */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <img src={userAvatar} style={{ width: 42, height: 42, borderRadius: '50%' }} />
+              <span style={{ fontWeight: 600 }}>{userName}</span>
+            </div>
+            {/* Content */}
+            <textarea
+              value={postContent}
+              onChange={e => setPostContent(e.target.value)}
+              placeholder="Bạn đang nghĩ gì về gà của mình? 🐓"
+              style={{ width: '100%', minHeight: 120, border: 'none', outline: 'none', resize: 'none', fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box' }}
+            />
+            {/* YouTube */}
+            <input
+              value={postYoutube}
+              onChange={e => setPostYoutube(e.target.value)}
+              placeholder="🎬 Link YouTube (không bắt buộc)"
+              style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '10px 14px', fontSize: 14, marginTop: 8, boxSizing: 'border-box', outline: 'none' }}
+            />
+            {/* Submit */}
+            <button
+              onClick={submitPost}
+              disabled={submitting || !postContent.trim()}
+              style={{ width: '100%', marginTop: 16, padding: '12px', background: postContent.trim() ? '#c0392b' : '#ccc', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: postContent.trim() ? 'pointer' : 'not-allowed' }}
+            >
+              {submitting ? 'Đang đăng...' : '🚀 Đăng bài'}
+            </button>
+          </div>
         </div>
       )}
 
-      {/* FORM ĐĂNG VIDEO */}
-      {showVideoForm && (
-        <div className="bg-white rounded-xl shadow-sm p-4 mb-4 border border-gray-200">
-          <h3 className="font-bold text-gray-700 mb-3">🎬 Đăng video YouTube</h3>
-          {videoSubmitResult ? (
-            <div className="text-center py-4">
-              <div className="text-3xl mb-2">🎉</div>
-              <div className="font-bold text-gray-700">Đăng video thành công!</div>
-              {videoSubmitResult.ai_enhanced && (
-                <div className="text-xs text-purple-600 mt-1">🤖 AI đã tối ưu tiêu đề</div>
-              )}
-            </div>
-          ) : (
-            <form onSubmit={submitVideo} className="space-y-3">
-              <div>
-                <input value={videoForm.youtube_url}
-                  onChange={e => { setVideoForm({...videoForm, youtube_url: e.target.value}); validateUrl(e.target.value); }}
-                  placeholder="https://youtube.com/watch?v=... hoặc https://youtu.be/..."
-                  className={`w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 ${urlError ? 'border-red-400' : ''}`} />
-                {urlError && <div className="text-xs text-red-500 mt-1">⚠️ {urlError}</div>}
-                {videoForm.youtube_url && !urlError && getYoutubeId(videoForm.youtube_url) && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <img src={`https://img.youtube.com/vi/${getYoutubeId(videoForm.youtube_url)}/default.jpg`}
-                      alt="" className="w-20 h-12 object-cover rounded" />
-                    <span className="text-xs text-green-600 font-semibold">✓ Link hợp lệ</span>
-                  </div>
-                )}
-              </div>
-              <input value={videoForm.title} onChange={e => setVideoForm({...videoForm, title: e.target.value})}
-                placeholder="Tiêu đề video (AI sẽ tối ưu)"
-                className="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
-              <textarea value={videoForm.description} onChange={e => setVideoForm({...videoForm, description: e.target.value})}
-                placeholder="Mô tả trận đấu..." rows={2}
-                className="w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none" />
-              <div className="flex gap-2 flex-wrap">
-                {[{v:'tap_luyen',l:'💪 Tập'},{v:'thang',l:'🏆 Thắng'},{v:'thua',l:'❌ Thua'},{v:'xo',l:'🤝 Xổ'}].map(k => (
-                  <button type="button" key={k.v} onClick={() => setVideoForm({...videoForm, match_result: k.v})}
-                    className={`px-3 py-1 rounded-full text-xs border transition ${videoForm.match_result === k.v ? 'bg-[#8B1A1A] text-white border-[#8B1A1A]' : 'bg-white text-gray-600 border-gray-300'}`}>
-                    {k.l}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <button type="submit" disabled={videoSubmitting || !!urlError || !videoForm.youtube_url}
-                  className="flex-1 bg-gray-700 text-white font-bold py-2 rounded-xl text-sm hover:bg-gray-800 transition disabled:opacity-50">
-                  {videoSubmitting ? '⏳ AI đang xử lý...' : '🤖 Đăng + AI tối ưu'}
-                </button>
-                <button type="button" onClick={() => setShowVideoForm(false)}
-                  className="border border-gray-300 text-gray-600 px-4 py-2 rounded-xl text-sm">Hủy</button>
-              </div>
-            </form>
-          )}
-        </div>
-      )}
+      {/* ── BODY: 3 CỘT ───────────────────────────────────── */}
+      <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: '240px 1fr 280px', gap: 16, padding: '16px 12px' }}>
 
-      {/* TABS */}
-      <div className="flex gap-1 bg-white rounded-xl shadow-sm p-1 mb-4">
-        <button onClick={() => setTab('feed')}
-          className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${tab === 'feed' ? 'bg-[#8B1A1A] text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-          📰 Bài viết ({posts.length})
-        </button>
-        <button onClick={() => setTab('video')}
-          className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${tab === 'video' ? 'bg-gray-700 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-          🎬 Video ({videos.length})
-        </button>
-      </div>
-
-      {/* FEED BÀI VIẾT */}
-      {tab === 'feed' && (
-        <div className="space-y-4">
-          {loading ? (
-            [1,2,3].map(i => (
-              <div key={i} className="bg-white rounded-xl p-4 shadow-sm animate-pulse">
-                <div className="flex gap-3 mb-3">
-                  <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
-                  <div className="flex-1 space-y-2">
-                    <div className="bg-gray-200 h-3 rounded w-1/4"></div>
-                    <div className="bg-gray-200 h-3 rounded w-1/3"></div>
-                  </div>
+        {/* ── CỘT TRÁI ──────────────────────────────────────── */}
+        <aside style={{ position: 'sticky', top: 80, height: 'fit-content' }}>
+          <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 12 }}>
+            {[
+              { href: '/', icon: '🏠', label: 'Trang chủ' },
+              { href: '/cong-dong', icon: '👥', label: 'Cộng đồng', active: true },
+              { href: '/cho', icon: '🐓', label: 'Gà đang bán' },
+              { href: '/videos', icon: '🎬', label: 'Video thực chiến' },
+              { href: '/thu-vien', icon: '📚', label: 'Bài viết kiến thức' },
+            ].map(item => (
+              <Link key={item.href} href={item.href} style={{ textDecoration: 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: 'pointer', background: item.active ? '#fdf0f0' : 'transparent', borderLeft: item.active ? '3px solid #c0392b' : '3px solid transparent', color: item.active ? '#c0392b' : '#333', fontWeight: item.active ? 700 : 400, transition: 'all 0.15s' }}>
+                  <span style={{ fontSize: 18 }}>{item.icon}</span>
+                  <span style={{ fontSize: 14 }}>{item.label}</span>
                 </div>
-                <div className="bg-gray-200 h-20 rounded-xl"></div>
+              </Link>
+            ))}
+          </div>
+
+          <div style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div style={{ fontWeight: 700, color: '#c0392b', fontSize: 13, marginBottom: 12 }}>Top sự kê uy tín</div>
+            {['Anh Tuấn', 'Lão Hùng', 'Sự Kê Nam'].map((name, i) => (
+              <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, cursor: 'pointer' }}>
+                <img src={`https://i.pravatar.cc/36?img=${i * 5 + 3}`} style={{ width: 36, height: 36, borderRadius: '50%' }} />
+                <span style={{ fontSize: 13, fontWeight: 500 }}>{name}</span>
               </div>
-            ))
+            ))}
+          </div>
+        </aside>
+
+        {/* ── CỘT GIỮA (FEED) ───────────────────────────────── */}
+        <main>
+          {/* Thanh đăng bài */}
+          <div style={{ background: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <img src={userAvatar} style={{ width: 42, height: 42, borderRadius: '50%' }} />
+              <div
+                onClick={() => user ? setShowPopup(true) : alert('Vui lòng đăng nhập để đăng bài!')}
+                style={{ flex: 1, background: '#f0f2f5', borderRadius: 24, padding: '10px 18px', cursor: 'pointer', color: '#888', fontSize: 15, border: '1px solid #e4e6ea' }}
+              >
+                Bạn đang nghĩ gì về gà của mình? 🐓
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid #e4e6ea', justifyContent: 'flex-end' }}>
+              <button onClick={() => user ? setShowPopup(true) : alert('Vui lòng đăng nhập!')} style={{ background: '#c0392b', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+                ✍️ Viết bài
+              </button>
+            </div>
+          </div>
+
+          {/* Sort tabs */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            {([['newest', '🕐 Mới nhất'], ['hot', '🔥 Nổi bật']] as const).map(([v, l]) => (
+              <button key={v} onClick={() => setSortBy(v)} style={{ padding: '7px 18px', borderRadius: 20, border: 'none', background: sortBy === v ? '#c0392b' : '#fff', color: sortBy === v ? '#fff' : '#555', fontWeight: 600, fontSize: 13, cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {/* Posts */}
+          {loading ? (
+            <div style={{ background: '#fff', borderRadius: 12, padding: 40, textAlign: 'center', color: '#888' }}>⏳ Đang tải bài viết...</div>
           ) : posts.length === 0 ? (
-            <div className="text-center py-16 bg-white rounded-xl shadow-sm">
-              <div className="text-5xl mb-3">📝</div>
-              <div className="font-semibold text-gray-500">Chưa có bài viết nào</div>
-              <button onClick={() => setShowPostForm(true)}
-                className="mt-3 bg-[#8B1A1A] text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-[#6B0F0F] transition">
+            <div style={{ background: '#fff', borderRadius: 12, padding: 50, textAlign: 'center' }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>📝</div>
+              <p style={{ color: '#888', marginBottom: 16 }}>Chưa có bài viết nào</p>
+              <button onClick={() => setShowPopup(true)} style={{ background: '#c0392b', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 700, cursor: 'pointer' }}>
                 Viết bài đầu tiên
               </button>
             </div>
           ) : (
             posts.map(post => (
-              <div key={post.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
-                {/* HEADER BÀI */}
-                <div className="p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 bg-[#8B1A1A] rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
-                    {(post.profiles?.username || 'U')[0].toUpperCase()}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-bold text-sm text-gray-800">{post.profiles?.username || 'Người dùng'}</div>
-                    <div className="text-xs text-gray-400">{timeAgo(post.created_at)}</div>
-                  </div>
-                </div>
-
-                {/* NỘI DUNG */}
-                <div className="px-4 pb-3">
-                  <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">{post.noi_dung}</p>
-                </div>
-
-                {/* ẢNH */}
-                {post.image_url && (
-                  <img src={post.image_url} alt="" className="w-full max-h-80 object-cover" />
-                )}
-
-                {/* ACTIONS */}
-                <div className="px-4 py-3 border-t flex items-center gap-4">
-                  <button onClick={() => likePost(post.id)}
-                    className={`flex items-center gap-1.5 text-sm font-semibold transition ${likedPosts.has(post.id) ? 'text-red-600' : 'text-gray-500 hover:text-red-500'}`}>
-                    {likedPosts.has(post.id) ? '❤️' : '🤍'} {post.likes || 0}
-                  </button>
-                  <button onClick={() => toggleComments(post.id)}
-                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-500 font-semibold transition">
-                    💬 {expandedComments.has(post.id) ? 'Ẩn' : 'Bình luận'}
-                  </button>
-                </div>
-
-                {/* BÌNH LUẬN */}
-                {expandedComments.has(post.id) && (
-                  <div className="px-4 pb-4 border-t bg-gray-50">
-                    <div className="space-y-3 py-3 max-h-48 overflow-y-auto">
-                      {(comments[post.id] || []).map((c: any) => (
-                        <div key={c.id} className="flex gap-2">
-                          <div className="w-7 h-7 bg-gray-300 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                            {(c.profiles?.username || 'U')[0].toUpperCase()}
-                          </div>
-                          <div className="bg-white rounded-xl px-3 py-2 flex-1 shadow-sm">
-                            <div className="font-semibold text-xs text-gray-700">{c.profiles?.username || 'Ẩn'}</div>
-                            <div className="text-sm text-gray-600">{c.noi_dung}</div>
-                          </div>
-                        </div>
-                      ))}
-                      {(comments[post.id] || []).length === 0 && (
-                        <div className="text-xs text-gray-400 text-center py-2">Chưa có bình luận</div>
-                      )}
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      <input value={newComment[post.id] || ''} onChange={e => setNewComment(prev => ({...prev, [post.id]: e.target.value}))}
-                        onKeyDown={e => e.key === 'Enter' && submitComment(post.id)}
-                        placeholder="Viết bình luận..."
-                        className="flex-1 border rounded-full px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
-                      <button onClick={() => submitComment(post.id)}
-                        className="bg-[#8B1A1A] text-white w-8 h-8 rounded-full flex items-center justify-center text-xs hover:bg-[#6B0F0F] transition">
-                        ➤
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <PostCard
+                key={post.id}
+                post={post}
+                comments={comments[post.id] || []}
+                liked={!!likedPosts[post.id]}
+                expanded={!!expandedComments[post.id]}
+                commentInput={commentInputs[post.id] || ''}
+                currentUserAvatar={userAvatar}
+                onLike={() => likePost(post.id)}
+                onToggleComments={() => toggleComments(post.id)}
+                onCommentChange={v => setCommentInputs(prev => ({ ...prev, [post.id]: v }))}
+                onCommentSubmit={() => submitComment(post.id)}
+                onShare={() => sharePost(post.id)}
+                onReport={() => reportPost(post.id)}
+              />
             ))
           )}
+        </main>
+
+        {/* ── CỘT PHẢI ──────────────────────────────────────── */}
+        <aside style={{ position: 'sticky', top: 80, height: 'fit-content' }}>
+          {/* Video nổi bật */}
+          <div style={{ background: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>🎬 Video nổi bật</div>
+            {[{ title: 'Đá gà kích tính', views: '10K', ytId: 'dQw4w9WgXcQ' }, { title: 'Gà xanh 3 hồ', views: '20K', ytId: 'dQw4w9WgXcQ' }].map(v => (
+              <div key={v.title} style={{ marginBottom: 12, cursor: 'pointer' }}>
+                <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#000', paddingBottom: '56.25%' }}>
+                  <img src={`https://img.youtube.com/vi/${v.ytId}/mqdefault.jpg`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16 }}>▶</div>
+                  </div>
+                  <div style={{ position: 'absolute', bottom: 6, right: 8, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: 11, padding: '2px 6px', borderRadius: 4 }}>▶ {v.views}</div>
+                </div>
+                <p style={{ margin: '6px 0 0', fontSize: 13, fontWeight: 600 }}>{v.title}</p>
+                <p style={{ margin: 0, fontSize: 11, color: '#888' }}>{v.views} lượt xem</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Bài viết hot */}
+          <div style={{ background: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#c0392b', marginBottom: 12 }}>🔥 Bài viết hot</div>
+            {['Cách xem vây gà chuẩn', 'Top giống gà đá hay', 'Bí quyết nuôi gà đòn'].map(t => (
+              <div key={t} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 10, cursor: 'pointer' }}>
+                <span style={{ color: '#c0392b', marginTop: 2 }}>▪</span>
+                <span style={{ fontSize: 13, color: '#333', lineHeight: 1.4 }}>{t}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Banners */}
+          {[
+            { bg: '#7B1818', text: 'Vitamin B12\nCHO GÀ', emoji: '💊' },
+            { bg: '#1a3a6e', text: 'Máy ấp trứng\nTự động', emoji: '🥚' },
+            { bg: '#4a1a00', text: 'Thức ăn\nCho gà đá', emoji: '🌾' },
+          ].map(b => (
+            <div key={b.text} style={{ background: b.bg, borderRadius: 10, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 28 }}>{b.emoji}</span>
+              <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'pre-line', lineHeight: 1.4 }}>{b.text}</div>
+            </div>
+          ))}
+        </aside>
+      </div>
+
+      {/* Responsive CSS */}
+      <style>{`
+        @media (max-width: 1024px) {
+          .cgv-grid { grid-template-columns: 200px 1fr !important; }
+          .cgv-right { display: none !important; }
+        }
+        @media (max-width: 768px) {
+          .cgv-grid { grid-template-columns: 1fr !important; }
+          .cgv-left { display: none !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ============================================================
+// POST CARD COMPONENT
+// ============================================================
+interface PostCardProps {
+  post: Post;
+  comments: Comment[];
+  liked: boolean;
+  expanded: boolean;
+  commentInput: string;
+  currentUserAvatar: string;
+  onLike: () => void;
+  onToggleComments: () => void;
+  onCommentChange: (v: string) => void;
+  onCommentSubmit: () => void;
+  onShare: () => void;
+  onReport: () => void;
+}
+
+function PostCard({ post, comments, liked, expanded, commentInput, currentUserAvatar, onLike, onToggleComments, onCommentChange, onCommentSubmit, onShare, onReport }: PostCardProps) {
+  const ytId = getYoutubeId(post.youtube_url);
+  const avatar = post.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.profiles?.full_name || 'U')}&background=8B0000&color=fff`;
+  const name = post.profiles?.full_name || 'Người dùng';
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '16px 16px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <img src={avatar} style={{ width: 44, height: 44, borderRadius: '50%', border: '2px solid #f0f2f5' }} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{name}</div>
+            <div style={{ fontSize: 12, color: '#888' }}>{timeAgo(post.created_at)}</div>
+          </div>
+        </div>
+        <button onClick={onReport} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 20, padding: '0 4px' }} title="Báo cáo">⋯</button>
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: '0 16px 12px', fontSize: 15, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{post.content}</div>
+
+      {/* YouTube embed */}
+      {ytId && (
+        <div style={{ paddingBottom: '56.25%', position: 'relative', background: '#000' }}>
+          <iframe
+            src={`https://www.youtube.com/embed/${ytId}`}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
         </div>
       )}
 
-      {/* VIDEO */}
-      {tab === 'video' && (
-        <div>
-          {videos.length === 0 ? (
-            <div className="text-center py-16 bg-white rounded-xl shadow-sm">
-              <div className="text-5xl mb-3">🎬</div>
-              <div className="font-semibold text-gray-500">Chưa có video nào</div>
-              <button onClick={() => setShowVideoForm(true)}
-                className="mt-3 bg-gray-700 text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-gray-800 transition">
-                Đăng video đầu tiên
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {videos.map(v => (
-                <div key={v.id} className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition">
+      {/* Stats */}
+      <div style={{ padding: '8px 16px', display: 'flex', gap: 16, fontSize: 13, color: '#888', borderBottom: '1px solid #e4e6ea' }}>
+        <span>👍 {formatNum(post.like_count)}</span>
+        <span>💬 {formatNum(post.comment_count)}</span>
+        <span>🔁 {formatNum(post.share_count)}</span>
+      </div>
 
-                  {activeVideo === v.id ? (
-                    <iframe src={`${v.embed_url}?autoplay=1&rel=0`}
-                      className="w-full h-48" allow="autoplay; encrypted-media" allowFullScreen />
-                  ) : (
-                    <div className="relative cursor-pointer group" onClick={async () => {
-                      setActiveVideo(v.id);
-                      await fetch('/api/videos', { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'view', video_id: v.id }) });
-                      setVideos(prev => prev.map(x => x.id === v.id ? { ...x, view_count: x.view_count + 1 } : x));
-                    }}>
-                      <img src={`https://img.youtube.com/vi/${getYoutubeId(v.youtube_url)}/mqdefault.jpg`}
-                        alt={v.title} className="w-full h-48 object-cover" />
-                      <div className="absolute inset-0 bg-black/30 group-hover:bg-black/40 flex items-center justify-center transition">
-                        <div className="w-14 h-14 bg-white/90 rounded-full flex items-center justify-center group-hover:scale-110 transition">
-                          <div className="text-red-600 text-2xl ml-1">▶</div>
-                        </div>
-                      </div>
-                      <div className="absolute top-2 left-2">
-                        <span className={`text-xs px-2 py-1 rounded-full font-semibold ${
-                          v.match_result === 'thang' ? 'bg-green-500 text-white' :
-                          v.match_result === 'thua' ? 'bg-red-500 text-white' :
-                          v.match_result === 'xo' ? 'bg-yellow-500 text-white' :
-                          'bg-blue-500 text-white'}`}>
-                          {KetQuaLabel[v.match_result] || v.match_result}
-                        </span>
-                      </div>
-                    </div>
-                  )}
+      {/* Action buttons */}
+      <div style={{ display: 'flex', padding: '4px 8px' }}>
+        {[
+          { icon: liked ? '👍' : '👍', label: 'Thích', color: liked ? '#c0392b' : '#65676b', action: onLike },
+          { icon: '💬', label: 'Bình luận', color: '#65676b', action: onToggleComments },
+          { icon: '🔁', label: 'Chia sẻ', color: '#65676b', action: onShare },
+          { icon: '⚠️', label: 'Báo cáo', color: '#65676b', action: onReport },
+        ].map(btn => (
+          <button key={btn.label} onClick={btn.action} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 4px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontSize: 13, fontWeight: 600, color: btn.color, transition: 'background 0.15s' }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#f0f2f5')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+            <span>{btn.icon}</span> {btn.label}
+          </button>
+        ))}
+      </div>
 
-                  <div className="p-3">
-                    <div className="font-bold text-sm text-gray-800 line-clamp-2 mb-1">{v.title}</div>
-                    {v.description && <div className="text-xs text-gray-500 line-clamp-2 mb-2">{v.description}</div>}
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-400">👁 {v.view_count} • {timeAgo(v.created_at)}</span>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => likeVideo(v.id)}
-                          className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full transition ${likedVideos.has(v.id) ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500 hover:bg-red-50'}`}>
-                          {likedVideos.has(v.id) ? '❤️' : '🤍'} {v.like_count}
-                        </button>
-                        <div className="relative">
-                          <button onClick={() => setReportingId(reportingId === v.id ? null : v.id)}
-                            className="text-xs text-gray-400 hover:text-red-500 px-1">⚑</button>
-                          {reportingId === v.id && (
-                            <div className="absolute right-0 bottom-8 bg-white shadow-lg rounded-xl p-2 z-10 w-36 border">
-                              <div className="text-xs font-bold text-gray-600 mb-1 px-1">Báo cáo:</div>
-                              {['Sai nội dung', 'Lừa đảo', 'Spam'].map(r => (
-                                <button key={r} onClick={() => handleReport(v.id, r)}
-                                  className="w-full text-left text-xs px-2 py-1.5 hover:bg-red-50 rounded text-gray-600 hover:text-red-600">
-                                  {r}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+      {/* Comments section */}
+      {expanded && (
+        <div style={{ borderTop: '1px solid #e4e6ea', padding: '12px 16px' }}>
+          {comments.length === 0 && <p style={{ color: '#888', fontSize: 13, margin: '0 0 12px' }}>Chưa có bình luận nào</p>}
+          {comments.map(c => (
+            <div key={c.id} style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <img src={c.profiles?.avatar_url || `https://ui-avatars.com/api/?name=U&background=8B0000&color=fff`} style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0 }} />
+              <div style={{ background: '#f0f2f5', borderRadius: 16, padding: '8px 14px' }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{c.profiles?.full_name || 'Người dùng'}</div>
+                <div style={{ fontSize: 14, marginTop: 2 }}>{c.content}</div>
+                <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>{timeAgo(c.created_at)}</div>
+              </div>
             </div>
-          )}
+          ))}
+          {/* Comment input */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <img src={currentUserAvatar} style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0 }} />
+            <div style={{ flex: 1, display: 'flex', gap: 8, background: '#f0f2f5', borderRadius: 24, padding: '6px 12px', alignItems: 'center' }}>
+              <input
+                value={commentInput}
+                onChange={e => onCommentChange(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && onCommentSubmit()}
+                placeholder="Viết bình luận..."
+                style={{ flex: 1, border: 'none', background: 'none', outline: 'none', fontSize: 14 }}
+              />
+              <button onClick={onCommentSubmit} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18 }}>➤</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
