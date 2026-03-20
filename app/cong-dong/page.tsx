@@ -1,169 +1,173 @@
-'use client';
-import { useState } from 'react';
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import OpenAI from 'openai';
 
-const BaiViet = [
-  {
-    id: 1, user: 'Anh Tuấn', time: '2 giờ trước',
-    noi_dung: 'Gà chọi đẹp quá anh em ơi! Con này mắt lửa, chân vuông chuẩn không?',
-    anh: true, likes: 5, comments: 3,
-  },
-  {
-    id: 2, user: 'Bác Hùng', time: '5 giờ trước',
-    noi_dung: 'Gà này chọi hay lắm ôn cò chưa tiếng nống, chọi nhiệt hơn phu tiền mog chia ciy nọt ong đường.',
-    anh: true, likes: 12, comments: 7,
-  },
-  {
-    id: 3, user: 'Chú Minh', time: '1 ngày trước',
-    noi_dung: 'Hỏi anh em: Gà tre 6 tháng tuổi nên cho ăn gì để tăng sức chiến?',
-    anh: false, likes: 8, comments: 15,
-  },
-];
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const MauNen = ['bg-orange-800', 'bg-gray-700', 'bg-green-800', 'bg-red-900'];
+// Lấy YouTube video ID từ link
+function getYoutubeId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+    /youtube\.com\/shorts\/([^&\n?#]+)/,
+  ];
+  for (const p of patterns) {
+    const match = url.match(p);
+    if (match) return match[1];
+  }
+  return null;
+}
 
-export default function CongDongPage() {
-  const [posts, setPosts] = useState(BaiViet);
-  const [newPost, setNewPost] = useState('');
-  const [liked, setLiked] = useState<number[]>([]);
+// GET — Lấy danh sách video
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const limit = parseInt(searchParams.get('limit') || '12');
+    const status = searchParams.get('status') || 'active';
 
-  const handlePost = () => {
-    if (!newPost.trim()) return;
-    setPosts([{
-      id: Date.now(), user: 'Bạn', time: 'Vừa xong',
-      noi_dung: newPost, anh: false, likes: 0, comments: 0,
-    }, ...posts]);
-    setNewPost('');
-  };
+    const { data, error } = await supabase
+      .from('videos')
+      .select('*, profiles(username)')
+      .eq('status', status)
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-  const toggleLike = (id: number) => {
-    setLiked(prev => prev.includes(id) ? prev.filter(l => l !== id) : [...prev, id]);
-  };
+    if (error) throw error;
+    return NextResponse.json({ data });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
 
-  return (
-    <div className="max-w-4xl mx-auto px-4 py-4">
-      <div className="grid md:grid-cols-3 gap-4">
+// POST — Đăng video mới
+export async function POST(req: NextRequest) {
+  try {
+    const { youtube_url, title, description, match_result, user_id } = await req.json();
 
-        {/* MAIN FEED */}
-        <div className="md:col-span-2 space-y-4">
+    if (!youtube_url || !user_id) {
+      return NextResponse.json({ error: 'Thiếu thông tin' }, { status: 400 });
+    }
 
-          {/* HEADER */}
-          <div className="bg-[#8B1A1A] text-white rounded-xl p-4">
-            <h1 className="font-black text-lg">🐓 Cộng Đồng Chủ Gà Việt</h1>
-            <p className="text-red-200 text-sm mt-1">Anh em nhận ảnh giúp con này</p>
-          </div>
+    // Validate YouTube URL
+    const videoId = getYoutubeId(youtube_url);
+    if (!videoId) {
+      return NextResponse.json({ error: 'Link YouTube không hợp lệ' }, { status: 400 });
+    }
 
-          {/* ĐĂNG BÀI */}
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <div className="flex gap-3 mb-3">
-              <div className="w-10 h-10 bg-[#8B1A1A] rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">B</div>
-              <input value={newPost} onChange={e => setNewPost(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handlePost()}
-                placeholder="Hỏi về gà, chia sẻ kinh nghiệm..."
-                className="flex-1 border rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 bg-gray-50" />
-            </div>
-            <div className="flex justify-between items-center">
-              <div className="flex gap-3">
-                <button className="text-gray-500 text-sm hover:text-red-700 transition">📷 Ảnh</button>
-                <button className="text-gray-500 text-sm hover:text-red-700 transition">🎬 Video</button>
-                <button className="text-gray-500 text-sm hover:text-red-700 transition">🤖 AI phân tích</button>
-              </div>
-              <button onClick={handlePost}
-                className="bg-[#8B1A1A] text-white px-5 py-1.5 rounded-full text-sm font-bold hover:bg-[#6B0F0F] transition">
-                Đăng
-              </button>
-            </div>
-          </div>
+    const embedUrl = `https://www.youtube.com/embed/${videoId}`;
 
-          {/* DANH SÁCH BÀI */}
-          {posts.map((post, idx) => (
-            <div key={post.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
-              {/* Header */}
-              <div className="flex items-center gap-3 p-4 pb-2">
-                <div className="w-10 h-10 bg-[#8B1A1A] rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
-                  {post.user[0]}
-                </div>
-                <div>
-                  <div className="font-bold text-sm text-gray-800">{post.user}</div>
-                  <div className="text-xs text-gray-400">{post.time}</div>
-                </div>
-                <button className="ml-auto text-gray-400 hover:text-gray-600">•••</button>
-              </div>
+    // Lấy config
+    const { data: cfg } = await supabase.from('config').select('mode_duyet').single();
+    const modeDuyet = cfg?.mode_duyet || 'auto';
 
-              {/* Nội dung */}
-              <p className="px-4 pb-3 text-sm text-gray-700">{post.noi_dung}</p>
+    // AI viết lại tiêu đề + mô tả
+    let finalTitle = title;
+    let finalDesc = description;
 
-              {/* Ảnh */}
-              {post.anh && (
-                <div className={`${MauNen[idx % MauNen.length]} h-48 flex items-center justify-center text-6xl`}>
-                  🐓
-                </div>
-              )}
+    try {
+      const aiRes = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: `Bạn là dân chơi gà chọi miền Nam. Viết lại tiêu đề và mô tả hấp dẫn cho video gà chọi này.
+Tiêu đề gốc: "${title}"
+Mô tả gốc: "${description || 'Không có'}"
+Kết quả trận: ${match_result}
 
-              {/* Caption */}
-              {post.anh && (
-                <p className="px-4 py-2 text-sm text-gray-600 font-medium">{post.noi_dung.slice(0, 30)}...</p>
-              )}
+Trả về JSON: {"title": "...", "description": "..."}
+Giữ ngắn gọn, dùng từ ngữ dân chơi gà miền Tây. KHÔNG bịa thông tin cụ thể.`
+        }],
+      });
 
-              {/* Reactions */}
-              <div className="px-4 py-2 border-t flex items-center justify-between">
-                <div className="flex items-center gap-1 text-sm text-gray-500">
-                  <span>👍😄</span>
-                  <span>{post.likes + (liked.includes(post.id) ? 1 : 0)}</span>
-                </div>
-                <span className="text-sm text-gray-500">{post.comments} bình luận</span>
-              </div>
+      const content = aiRes.choices[0].message.content || '';
+      const match = content.match(/\{[\s\S]*\}/);
+      if (match) {
+        const ai = JSON.parse(match[0]);
+        if (ai.title) finalTitle = ai.title;
+        if (ai.description) finalDesc = ai.description;
+      }
+    } catch { /* giữ nguyên nếu AI lỗi */ }
 
-              {/* Actions */}
-              <div className="px-4 pb-3 flex gap-4 border-t pt-2">
-                <button onClick={() => toggleLike(post.id)}
-                  className={`flex items-center gap-1.5 text-sm font-semibold transition ${liked.includes(post.id) ? 'text-blue-600' : 'text-gray-500 hover:text-blue-600'}`}>
-                  👍 Thích
-                </button>
-                <button className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-green-600 transition">
-                  💬 Bình luận
-                </button>
-                <button className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-red-600 transition">
-                  ↗ Chia sẻ
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+    // Xác định status
+    const status = modeDuyet === 'auto' ? 'active' : 'pending';
 
-        {/* SIDEBAR */}
-        <div className="space-y-4">
+    const { data, error } = await supabase
+      .from('videos')
+      .insert({
+        user_id,
+        youtube_url,
+        embed_url: embedUrl,
+        title: finalTitle,
+        description: finalDesc,
+        match_result,
+        status,
+        view_count: 0,
+        like_count: 0,
+        report_count: 0,
+      })
+      .select()
+      .single();
 
-          {/* BÀI VIẾT NỔI BẬT */}
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <h3 className="font-black text-gray-800 mb-3">📌 Bài viết nổi bật</h3>
-            {['Cách xem tướng gà chuẩn', 'Kinh nghiệm nuôi gà chiến', 'Top 5 dòng gà mạnh nhất'].map((title, i) => (
-              <div key={i} className="flex items-center gap-2 py-2 border-b last:border-0">
-                <div className="w-8 h-8 bg-[#8B1A1A] rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                  {i + 1}
-                </div>
-                <span className="text-sm text-gray-700 hover:text-red-800 cursor-pointer">{title}</span>
-              </div>
-            ))}
-          </div>
+    if (error) throw error;
+    return NextResponse.json({ success: true, video: data, ai_enhanced: finalTitle !== title });
 
-          {/* THÀNH VIÊN NỔI BẬT */}
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <h3 className="font-black text-gray-800 mb-3">👑 Thành viên nổi bật</h3>
-            {['Anh Tuấn', 'Bác Hùng', 'Chú Minh'].map((ten, i) => (
-              <div key={i} className="flex items-center gap-2 py-2">
-                <div className="w-9 h-9 bg-[#8B1A1A] rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                  {ten[0]}
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-gray-800">{ten}</div>
-                  <div className="text-xs text-gray-400">⭐ {4.5 + i * 0.1} • {20 + i * 5} bài</div>
-                </div>
-              </div>
-            ))}
-          </div>
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
 
-        </div>
-      </div>
-    </div>
-  );
+// PATCH — Like / View / Report
+export async function PATCH(req: NextRequest) {
+  try {
+    const { action, video_id, user_id, reason } = await req.json();
+
+    if (action === 'view') {
+      await supabase.rpc('increment_view', { vid: video_id }).catch(() =>
+        supabase.from('videos').select('view_count').eq('id', video_id).single().then(({ data }) =>
+          supabase.from('videos').update({ view_count: (data?.view_count || 0) + 1 }).eq('id', video_id)
+        )
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'like' && user_id) {
+      const { data: existing } = await supabase
+        .from('video_likes').select('id').eq('video_id', video_id).eq('user_id', user_id).maybeSingle();
+
+      if (existing) {
+        await supabase.from('video_likes').delete().eq('video_id', video_id).eq('user_id', user_id);
+        const { data: v } = await supabase.from('videos').select('like_count').eq('id', video_id).single();
+        await supabase.from('videos').update({ like_count: Math.max(0, (v?.like_count || 1) - 1) }).eq('id', video_id);
+        return NextResponse.json({ liked: false });
+      } else {
+        await supabase.from('video_likes').insert({ video_id, user_id });
+        const { data: v } = await supabase.from('videos').select('like_count').eq('id', video_id).single();
+        await supabase.from('videos').update({ like_count: (v?.like_count || 0) + 1 }).eq('id', video_id);
+        return NextResponse.json({ liked: true });
+      }
+    }
+
+    if (action === 'report' && user_id) {
+      await supabase.from('video_reports').insert({ video_id, user_id, reason: reason || 'Vi phạm' }).catch(() => {});
+      const { data: v } = await supabase.from('videos').select('report_count').eq('id', video_id).single();
+      const newCount = (v?.report_count || 0) + 1;
+      const { data: cfg } = await supabase.from('config').select('report_threshold').single();
+      const threshold = cfg?.report_threshold || 5;
+
+      if (newCount >= threshold) {
+        await supabase.from('videos').update({ report_count: newCount, status: 'hidden' }).eq('id', video_id);
+      } else {
+        await supabase.from('videos').update({ report_count: newCount }).eq('id', video_id);
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ error: 'Action không hợp lệ' }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
