@@ -1,237 +1,316 @@
 'use client';
-import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useChatPopup } from '@/components/chat/ChatPopupContext';
 
-// ── Types ─────────────────────────────────────────────────────
-export interface ChatMessage {
-  id: string | number;
-  sender_id: string;
-  noi_dung: string;
-  loai: string;
-  created_at: string;
-  pending?: boolean;
-}
+export default function GaDetailPage() {
+  const { id } = useParams();
+  const { openChat } = useChatPopup();
 
-export interface ChatConversation {
-  convId: string;
-  gaId: string;
-  gaTen: string;
-  gaAnh: string;
-  doiPhuongId: string;
-  doiPhuongName: string;
-  messages: ChatMessage[];
-  minimized: boolean;
-  loading: boolean;
-  unread: number;
-}
-
-interface ChatContextType {
-  conversations: ChatConversation[];
-  openChat: (gaId: string, sellerId: string, gaTen?: string, gaAnh?: string) => Promise<void>;
-  closeChat: (convId: string) => void;
-  minimizeChat: (convId: string, val: boolean) => void;
-  sendMessage: (convId: string, text: string) => Promise<void>;
-  currentUser: any;
-}
-
-const ChatContext = createContext<ChatContextType | null>(null);
-
-export function useChatPopup() {
-  const ctx = useContext(ChatContext);
-  if (!ctx) throw new Error('useChatPopup must be used inside ChatPopupProvider');
-  return ctx;
-}
-
-// ── Provider ──────────────────────────────────────────────────
-export function ChatPopupProvider({ children }: { children: React.ReactNode }) {
-  const [conversations, setConversations] = useState<ChatConversation[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const channelsRef = useRef<Record<string, any>>({});
+  const [ga, setGa] = useState<any>(null);
+  const [aiData, setAiData] = useState<any>(null);
+  const [nguoiBan, setNguoiBan] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [anhChinh, setAnhChinh] = useState(0);
+  const [comment, setComment] = useState('');
+  const [comments, setComments] = useState<any[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setCurrentUser(data?.user ?? null));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      setCurrentUser(session?.user ?? null);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+    if (id) fetchGa();
+  }, [id]);
 
-  // ── Subscribe realtime cho 1 conv ───────────────────────────
-  const subscribeConv = useCallback((convId: string) => {
-    if (channelsRef.current[convId]) return; // đã subscribe
-    const channel = supabase
-      .channel(`chat-popup-${convId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `conversation_id=eq.${convId}`,
-      }, (payload) => {
-        const msg = payload.new as ChatMessage;
-        setConversations(prev => prev.map(c => {
-          if (c.convId !== convId) return c;
-          // Tránh duplicate
-          if (c.messages.find(m => String(m.id) === String(msg.id))) return c;
-          // Nếu đang minimized → tăng unread
-          return {
-            ...c,
-            messages: [...c.messages.filter(m => !m.pending || m.noi_dung !== msg.noi_dung), msg],
-            unread: c.minimized ? c.unread + 1 : 0,
-          };
-        }));
-      })
-      .subscribe();
-    channelsRef.current[convId] = channel;
-  }, []);
-
-  // ── Unsubscribe ──────────────────────────────────────────────
-  const unsubscribeConv = useCallback((convId: string) => {
-    if (channelsRef.current[convId]) {
-      supabase.removeChannel(channelsRef.current[convId]);
-      delete channelsRef.current[convId];
-    }
-  }, []);
-
-  // ── openChat ─────────────────────────────────────────────────
-  const openChat = useCallback(async (
-    gaId: string,
-    sellerId: string,
-    gaTen = 'Con gà',
-    gaAnh = '',
-  ) => {
-    if (!currentUser) { alert('Vui lòng đăng nhập để nhắn tin!'); return; }
-    if (currentUser.id === sellerId) { alert('Đây là gà của bạn!'); return; }
-
-    // Giới hạn 3 cửa sổ chat cùng lúc
-    if (conversations.length >= 3) {
-      setConversations(prev => {
-        const oldest = prev[0];
-        unsubscribeConv(oldest.convId);
-        return prev.slice(1);
-      });
-    }
-
-    // Check đã mở chưa → reopen
-    const existing = conversations.find(c => c.gaId === gaId);
-    if (existing) {
-      setConversations(prev => prev.map(c =>
-        c.convId === existing.convId ? { ...c, minimized: false, unread: 0 } : c
-      ));
-      return;
-    }
-
-    // Check conversation đã tồn tại trong DB
-    let convId: string;
-    const { data: existConv } = await supabase
-      .from('conversations')
-      .select('id')
-      .eq('ga_id', gaId)
-      .eq('buyer_id', currentUser.id)
-      .eq('seller_id', sellerId)
-      .maybeSingle();
-
-    if (existConv) {
-      convId = existConv.id;
-    } else {
-      // Tạo mới
-      const { data: newConv, error } = await supabase
-        .from('conversations')
-        .insert({ ga_id: gaId, buyer_id: currentUser.id, seller_id: sellerId })
-        .select('id')
+  const fetchGa = async () => {
+    try {
+      const { data: gaData } = await supabase
+        .from('ga')
+        .select(`
+          *,
+          ga_images (id, url, is_primary),
+          ai_analysis (total_score, nhan_xet, mat_score, chan_score, vay_score, dau_score)
+        `)
+        .eq('id', id)
         .single();
-      if (error || !newConv) { console.error('Tạo conversation thất bại:', error); return; }
-      convId = newConv.id;
+
+      if (gaData) {
+        setGa(gaData);
+        setAiData(gaData.ai_analysis?.[0] || null);
+
+        if (gaData.user_id) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', gaData.user_id)
+            .single();
+          setNguoiBan(profile);
+        }
+
+        const { data: cmts } = await supabase
+          .from('comments')
+          .select('*, profiles(username)')
+          .eq('ga_id', id)
+          .order('created_at', { ascending: false });
+        setComments(cmts || []);
+
+        await supabase
+          .from('ga')
+          .update({ view_count: (gaData.view_count || 0) + 1 })
+          .eq('id', id);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // Lấy tên đối phương
-    const { data: sellerProfile } = await supabase
-      .from('profiles')
-      .select('username')
-      .eq('id', sellerId)
-      .maybeSingle();
+  const addComment = async () => {
+    if (!comment.trim()) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { alert('Vui lòng đăng nhập để bình luận'); return; }
+    const { data } = await supabase
+      .from('comments')
+      .insert({ ga_id: id, user_id: user.id, noi_dung: comment })
+      .select('*, profiles(username)')
+      .single();
+    if (data) { setComments([data, ...comments]); setComment(''); }
+  };
 
-    // Lấy messages cũ
-    const { data: msgs } = await supabase
-      .from('messages')
-      .select('id, sender_id, noi_dung, loai, created_at')
-      .eq('conversation_id', convId)
-      .order('created_at', { ascending: true });
+  // ── Mở chat popup ─────────────────────────────────────────
+  const handleOpenChat = async (message?: string) => {
+    if (!ga?.user_id) return;
+    setChatLoading(true);
+    const anhGa = ga.ga_images?.find((i: any) => i.is_primary)?.url || ga.ga_images?.[0]?.url || '';
+    await openChat(ga.id, ga.user_id, ga.ten, anhGa);
+    setChatLoading(false);
+  };
 
-    const newConvObj: ChatConversation = {
-      convId,
-      gaId,
-      gaTen,
-      gaAnh,
-      doiPhuongId: sellerId,
-      doiPhuongName: sellerProfile?.username || 'Người bán',
-      messages: msgs || [],
-      minimized: false,
-      loading: false,
-      unread: 0,
-    };
+  const getDiemMau = (d: number) => d >= 8 ? 'text-green-600' : d >= 6.5 ? 'text-yellow-600' : 'text-red-500';
+  const getBarWidth = (d: number) => `${(d || 0) * 10}%`;
 
-    setConversations(prev => [...prev, newConvObj]);
-    subscribeConv(convId);
-  }, [currentUser, conversations, subscribeConv, unsubscribeConv]);
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <div className="animate-pulse grid md:grid-cols-2 gap-6">
+          <div className="bg-gray-200 h-72 rounded-xl"></div>
+          <div className="space-y-4">
+            <div className="bg-gray-200 h-8 rounded w-3/4"></div>
+            <div className="bg-gray-200 h-6 rounded w-1/2"></div>
+            <div className="bg-gray-200 h-32 rounded"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  // ── closeChat ────────────────────────────────────────────────
-  const closeChat = useCallback((convId: string) => {
-    unsubscribeConv(convId);
-    setConversations(prev => prev.filter(c => c.convId !== convId));
-  }, [unsubscribeConv]);
+  if (!ga) {
+    return (
+      <div className="text-center py-20">
+        <div className="text-5xl mb-4">🐓</div>
+        <div className="font-bold text-gray-600">Không tìm thấy gà này</div>
+        <Link href="/cho" className="mt-4 inline-block text-[#8B1A1A] hover:underline">← Về chợ</Link>
+      </div>
+    );
+  }
 
-  // ── minimizeChat ─────────────────────────────────────────────
-  const minimizeChat = useCallback((convId: string, val: boolean) => {
-    setConversations(prev => prev.map(c =>
-      c.convId === convId ? { ...c, minimized: val, unread: val ? c.unread : 0 } : c
-    ));
-  }, []);
-
-  // ── sendMessage ──────────────────────────────────────────────
-  const sendMessage = useCallback(async (convId: string, text: string) => {
-    if (!text.trim() || !currentUser) return;
-
-    // Optimistic UI
-    const tempId = `temp-${Date.now()}`;
-    const tempMsg: ChatMessage = {
-      id: tempId,
-      sender_id: currentUser.id,
-      noi_dung: text,
-      loai: 'text',
-      created_at: new Date().toISOString(),
-      pending: true,
-    };
-    setConversations(prev => prev.map(c =>
-      c.convId === convId ? { ...c, messages: [...c.messages, tempMsg] } : c
-    ));
-
-    const { data, error } = await supabase.from('messages').insert({
-      conversation_id: convId,
-      sender_id: currentUser.id,
-      noi_dung: text,
-      loai: 'text',
-    }).select('id, sender_id, noi_dung, loai, created_at').single();
-
-    if (!error && data) {
-      // Replace temp với message thật
-      setConversations(prev => prev.map(c =>
-        c.convId === convId
-          ? { ...c, messages: c.messages.map(m => m.id === tempId ? data : m) }
-          : c
-      ));
-    } else {
-      // Xóa optimistic nếu lỗi
-      setConversations(prev => prev.map(c =>
-        c.convId === convId
-          ? { ...c, messages: c.messages.filter(m => m.id !== tempId) }
-          : c
-      ));
-    }
-  }, [currentUser]);
+  const anhList = ga.ga_images || [];
+  const anhHienTai = anhList[anhChinh]?.url;
 
   return (
-    <ChatContext.Provider value={{ conversations, openChat, closeChat, minimizeChat, sendMessage, currentUser }}>
-      {children}
-    </ChatContext.Provider>
+    <div className="max-w-6xl mx-auto px-4 py-4">
+
+      {/* BREADCRUMB */}
+      <div className="text-xs text-gray-500 mb-4">
+        <Link href="/" className="hover:text-red-800">Trang chủ</Link> &gt;{' '}
+        <Link href="/cho" className="hover:text-red-800">Chợ</Link> &gt;{' '}
+        <span className="text-gray-800">{ga.ten}</span>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6 mb-6">
+
+        {/* ẢNH */}
+        <div>
+          {anhHienTai ? (
+            <img src={anhHienTai} alt={ga.ten} className="w-full h-72 object-cover rounded-xl mb-3" />
+          ) : (
+            <div className="bg-orange-800 rounded-xl h-72 flex items-center justify-center text-8xl mb-3">🐓</div>
+          )}
+          {anhList.length > 0 && (
+            <div className="flex gap-2 flex-wrap">
+              {anhList.map((anh: any, i: number) => (
+                <button key={i} onClick={() => setAnhChinh(i)}
+                  className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition ${anhChinh === i ? 'border-yellow-400' : 'border-transparent'}`}>
+                  <img src={anh.url} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* THÔNG TIN */}
+        <div>
+          <div className="text-xs text-[#8B1A1A] font-semibold mb-1">{ga.loai_ga}</div>
+          <h1 className="font-black text-2xl text-gray-800 mb-2">{ga.ten}</h1>
+          <div className="text-[#8B1A1A] font-black text-3xl mb-4">
+            {parseInt(ga.gia).toLocaleString('vi-VN')} đ
+          </div>
+
+          <div className="text-sm text-gray-500 mb-1">Giá thương lượng</div>
+          <div className="flex gap-3 mb-4 flex-wrap">
+            {ga.can_nang && <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">{ga.can_nang} kg</span>}
+            {ga.tuoi && <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">{ga.tuoi} tháng</span>}
+            <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">📍 {ga.khu_vuc}</span>
+            {ga.view_count > 0 && <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">👁 {ga.view_count} lượt xem</span>}
+          </div>
+
+          {/* ── BUTTONS CHAT — KHÔNG CHUYỂN TRANG ── */}
+          <div className="flex gap-3 mb-6 flex-wrap">
+            <button
+              onClick={() => handleOpenChat('Tôi muốn mua con gà này!')}
+              disabled={chatLoading}
+              className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition text-center min-w-[100px] disabled:opacity-60"
+            >
+              {chatLoading ? '⏳...' : '🛒 Mua ngay'}
+            </button>
+            <button
+              onClick={() => handleOpenChat('Giá có thể thương lượng không bạn?')}
+              disabled={chatLoading}
+              className="flex-1 border-2 border-[#8B1A1A] text-[#8B1A1A] font-bold py-3 rounded-xl hover:bg-red-50 transition text-center min-w-[100px] disabled:opacity-60"
+            >
+              💬 Trả giá
+            </button>
+            <button
+              onClick={() => handleOpenChat()}
+              disabled={chatLoading}
+              className="border-2 border-gray-300 text-gray-600 font-bold px-4 py-3 rounded-xl hover:bg-gray-50 transition disabled:opacity-60"
+            >
+              📞 Liên hệ
+            </button>
+          </div>
+
+          {/* AI PHÂN TÍCH */}
+          {aiData ? (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="font-black text-gray-800">🤖 Phân tích AI</h3>
+                <div className={`text-3xl font-black ${getDiemMau(aiData.total_score)}`}>
+                  {aiData.total_score}/10
+                </div>
+              </div>
+              {aiData.nhan_xet && (
+                <p className="text-sm text-gray-600 mb-3 leading-relaxed">{aiData.nhan_xet}</p>
+              )}
+              {(aiData.mat_score || aiData.chan_score || aiData.vay_score || aiData.dau_score) && (
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: '👁 Mắt', score: aiData.mat_score },
+                    { label: '🦵 Chân', score: aiData.chan_score },
+                    { label: '🐾 Vảy', score: aiData.vay_score },
+                    { label: '🐓 Đầu', score: aiData.dau_score },
+                  ].filter(item => item.score).map(item => (
+                    <div key={item.label} className="bg-white rounded-lg p-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-semibold text-gray-600">{item.label}</span>
+                        <span className={`text-xs font-black ${getDiemMau(item.score)}`}>{item.score}/10</span>
+                      </div>
+                      <div className="h-1.5 bg-gray-200 rounded-full mt-1">
+                        <div className="h-1.5 bg-[#8B1A1A] rounded-full" style={{ width: getBarWidth(item.score) }}></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center text-gray-400 text-sm">
+              🤖 Chưa có phân tích AI cho gà này
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-6">
+
+        {/* MÔ TẢ + BÌNH LUẬN */}
+        <div className="md:col-span-2 space-y-4">
+          {ga.mo_ta && (
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <h3 className="font-black text-gray-800 mb-3">📋 Mô tả</h3>
+              <p className="text-gray-600 text-sm leading-relaxed">{ga.mo_ta}</p>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <h3 className="font-black text-gray-800 mb-3">💬 Bình luận ({comments.length})</h3>
+            <div className="flex gap-2 mb-4">
+              <input value={comment} onChange={e => setComment(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addComment()}
+                placeholder="Nhận xét về con gà này..."
+                className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+              <button onClick={addComment}
+                className="bg-[#8B1A1A] text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-[#6B0F0F] transition">
+                Gửi
+              </button>
+            </div>
+            {comments.length === 0 ? (
+              <div className="text-center py-6 text-gray-400 text-sm">Chưa có bình luận. Hãy là người đầu tiên!</div>
+            ) : (
+              <div className="space-y-3">
+                {comments.map((c: any) => (
+                  <div key={c.id} className="flex gap-3">
+                    <div className="w-8 h-8 bg-red-800 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                      {(c.profiles?.username || c.user_id)?.[0]?.toUpperCase() || 'U'}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex gap-2 items-center">
+                        <span className="font-semibold text-sm text-gray-800">{c.profiles?.username || 'Người dùng'}</span>
+                        <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleDateString('vi-VN')}</span>
+                      </div>
+                      <div className="text-sm text-gray-600 mt-0.5">{c.noi_dung}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* NGƯỜI BÁN */}
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <h3 className="font-black text-gray-800 mb-3">👤 Người bán</h3>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-12 h-12 bg-[#8B1A1A] rounded-full flex items-center justify-center text-white font-black text-lg">
+                {(nguoiBan?.username || 'U')[0].toUpperCase()}
+              </div>
+              <div>
+                <div className="font-bold text-gray-800">{nguoiBan?.username || 'Người bán'}</div>
+                <div className="text-xs text-gray-500">⭐ {nguoiBan?.trust_score || 5.0}</div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Link href={`/ho-so/${ga.user_id}`}
+                className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-2 rounded-xl hover:bg-gray-50 transition text-sm text-center">
+                Xem hồ sơ
+              </Link>
+              <button
+                onClick={() => handleOpenChat()}
+                disabled={chatLoading}
+                className="flex-1 bg-[#8B1A1A] text-white font-bold py-2 rounded-xl hover:bg-[#6B0F0F] transition text-sm disabled:opacity-60"
+              >
+                💬 Nhắn tin
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <h3 className="font-black text-gray-800 mb-3">🐓 Gà tương tự</h3>
+            <div className="text-sm text-gray-400 text-center py-2">Đang cập nhật...</div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
