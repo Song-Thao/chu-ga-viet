@@ -1,241 +1,218 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { ChatConversation, useChatPopup } from './ChatPopupContext';
-import MessageItem from './MessageItem';
+import { OpenChat, useChat } from './ChatContext';
 
 interface Props {
-  conv: ChatConversation;
-  index: number; // vị trí từ phải sang (0, 1, 2)
+  chat: OpenChat;
+  index: number; // vị trí từ phải sang: 0, 1, 2
 }
 
-export default function ChatWindow({ conv, index }: Props) {
-  const { closeChat, minimizeChat, sendMessage, currentUser } = useChatPopup();
+export default function ChatWindow({ chat, index }: Props) {
+  const { currentUser, closeChat, minimizeChat, sendMessage } = useChat();
   const [input, setInput] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
-  // Auto scroll khi có message mới
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+
+  // Vị trí mặc định — tính từ phải sang, từ dưới lên
   useEffect(() => {
-    if (!conv.minimized) {
+    if (typeof window !== 'undefined') {
+      setPos({
+        x: window.innerWidth - 320 - index * 328 - 8,
+        y: window.innerHeight - 480 - 8,
+      });
+    }
+  }, [index]);
+
+  // Auto scroll
+  useEffect(() => {
+    if (!chat.minimized) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [conv.messages, conv.minimized]);
+  }, [chat.messages, chat.minimized]);
 
-  // Focus input khi mở
+  // Drag
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button,a,input')) return;
+    if (!pos) return;
+    isDragging.current = true;
+    dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    e.preventDefault();
+  }, [pos]);
+
   useEffect(() => {
-    if (!conv.minimized) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  }, [conv.minimized]);
+    const onMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      setPos({
+        x: Math.max(0, Math.min(window.innerWidth - 320, e.clientX - dragOffset.current.x)),
+        y: Math.max(0, Math.min(window.innerHeight - 44, e.clientY - dragOffset.current.y)),
+      });
+    };
+    const onUp = () => { isDragging.current = false; };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   const handleSend = () => {
     const text = input.trim();
     if (!text) return;
     setInput('');
-    sendMessage(conv.convId, text);
+    sendMessage(chat.convId, text);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  if (!pos) return null;
 
-  // Vị trí từ phải sang: index 0 = rightmost
-  const rightOffset = 16 + index * 320 + index * 8;
+  const isProduct = chat.type === 'product';
 
   return (
-    <>
-      {/* ── DESKTOP POPUP ── */}
+    <div style={{
+      position: 'fixed', left: pos.x, top: pos.y,
+      width: 312, zIndex: 9999,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+      borderRadius: 12, overflow: 'hidden',
+      border: '1px solid rgba(0,0,0,0.08)',
+    }}>
+      {/* ── HEADER ── */}
       <div
-        className="hidden md:flex flex-col bg-white rounded-t-xl shadow-2xl border border-gray-200 fixed bottom-0 z-50"
-        style={{ width: 300, right: rightOffset }}
+        onMouseDown={onMouseDown}
+        style={{
+          background: '#8B1A1A', padding: '8px 10px',
+          display: 'flex', alignItems: 'center', gap: 8,
+          cursor: 'move', userSelect: 'none',
+        }}
       >
-        {/* Header */}
-        <div
-          className="flex items-center gap-2 px-3 py-2.5 bg-[#8B1A1A] rounded-t-xl cursor-pointer select-none"
-          onClick={() => minimizeChat(conv.convId, !conv.minimized)}
-        >
-          {conv.gaAnh ? (
-            <img src={conv.gaAnh} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
-          ) : (
-            <div className="w-8 h-8 bg-red-700 rounded-lg flex items-center justify-center text-base flex-shrink-0">🐓</div>
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="text-white font-bold text-xs truncate">{conv.gaTen}</div>
-            <div className="text-red-200 text-xs truncate">{conv.doiPhuongName}</div>
+        {/* Avatar: ảnh gà nếu product, chữ cái nếu user */}
+        {isProduct ? (
+          chat.gaAnh
+            ? <img src={chat.gaAnh} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+            : <div style={{ width: 32, height: 32, background: '#6B0F0F', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🐓</div>
+        ) : (
+          <div style={{ width: 32, height: 32, background: '#6B0F0F', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+            {(chat.doiPhuongName || 'U')[0].toUpperCase()}
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {conv.unread > 0 && (
-              <span className="bg-yellow-400 text-black text-xs font-black w-4 h-4 rounded-full flex items-center justify-center">
-                {conv.unread > 9 ? '9+' : conv.unread}
-              </span>
-            )}
-            <button
-              onClick={e => { e.stopPropagation(); minimizeChat(conv.convId, !conv.minimized); }}
-              className="text-white/80 hover:text-white text-sm w-5 h-5 flex items-center justify-center"
-              title={conv.minimized ? 'Mở rộng' : 'Thu nhỏ'}
-            >
-              {conv.minimized ? '▲' : '▼'}
-            </button>
-            <button
-              onClick={e => { e.stopPropagation(); closeChat(conv.convId); }}
-              className="text-white/80 hover:text-white text-sm w-5 h-5 flex items-center justify-center"
-              title="Đóng"
-            >
-              ✕
-            </button>
+        )}
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {isProduct ? chat.gaTen : chat.doiPhuongName}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 10 }}>
+            {isProduct ? chat.doiPhuongName : 'Tin nhắn trực tiếp'}
           </div>
         </div>
 
-        {/* Body — ẩn khi minimized */}
-        {!conv.minimized && (
-          <>
-            {/* Link xem gà */}
-            <div className="px-3 py-1.5 bg-red-50 border-b border-red-100 flex items-center justify-between">
-              <span className="text-xs text-gray-500">Hỏi mua con gà này</span>
-              <Link href={`/ga/${conv.gaId}`}
-                className="text-xs text-[#8B1A1A] font-semibold hover:underline">
+        {chat.unread > 0 && (
+          <span style={{ background: '#FFD700', color: '#000', fontSize: 9, fontWeight: 900, padding: '1px 5px', borderRadius: 99, flexShrink: 0 }}>
+            {chat.unread}
+          </span>
+        )}
+
+        <button
+          onClick={() => minimizeChat(chat.convId, !chat.minimized)}
+          style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 4, color: '#fff', width: 22, height: 22, cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          title={chat.minimized ? 'Mở rộng' : 'Thu nhỏ'}
+        >
+          {chat.minimized ? '▲' : '▼'}
+        </button>
+        <button
+          onClick={() => closeChat(chat.convId)}
+          style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 4, color: '#fff', width: 22, height: 22, cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          title="Đóng"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* ── BODY ── */}
+      {!chat.minimized && (
+        <div style={{ background: '#fff', display: 'flex', flexDirection: 'column', height: 420 }}>
+
+          {/* Nếu là product chat → hiện link xem gà */}
+          {isProduct && chat.gaId && (
+            <div style={{ padding: '5px 12px', background: '#fdf0f0', borderBottom: '1px solid #f5dada', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 10, color: '#888' }}>Hỏi mua: {chat.gaTen}</span>
+              <Link href={`/ga/${chat.gaId}`} style={{ fontSize: 10, color: '#8B1A1A', fontWeight: 700, textDecoration: 'none' }}>
                 Xem gà →
               </Link>
             </div>
+          )}
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-0" style={{ height: 280 }}>
-              {conv.messages.length === 0 && (
-                <div className="text-center py-6">
-                  <div className="text-3xl mb-2">👋</div>
-                  <div className="text-xs text-gray-400 mb-3">Bắt đầu trò chuyện về con gà này!</div>
-                  <div className="flex flex-col gap-1.5">
-                    {['Gà còn không bạn?', 'Giá có thể bớt không?', 'Cho xem thêm ảnh được không?'].map(q => (
-                      <button key={q} onClick={() => sendMessage(conv.convId, q)}
-                        className="bg-gray-50 border border-gray-200 text-gray-600 text-xs px-3 py-1.5 rounded-full hover:bg-gray-100 transition text-left">
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {conv.messages.map(msg => (
-                <MessageItem
-                  key={String(msg.id)}
-                  msg={msg}
-                  isMe={msg.sender_id === currentUser?.id}
-                  doiPhuongName={conv.doiPhuongName}
-                />
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input */}
-            <div className="border-t border-gray-100 p-2 flex gap-2 items-center">
-              <input
-                ref={inputRef}
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Nhắn tin..."
-                className="flex-1 border border-gray-200 rounded-full px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
-              />
-              <button
-                onClick={handleSend}
-                disabled={!input.trim()}
-                className="w-8 h-8 bg-[#8B1A1A] text-white rounded-full flex items-center justify-center hover:bg-[#6B0F0F] transition disabled:opacity-40 flex-shrink-0 text-sm"
-              >
-                ➤
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* ── MOBILE FULLSCREEN ── */}
-      {!conv.minimized && (
-        <div className="md:hidden fixed inset-0 z-50 bg-white flex flex-col">
-          {/* Header mobile */}
-          <div className="flex items-center gap-3 px-4 py-3 bg-[#8B1A1A] flex-shrink-0">
-            <button onClick={() => minimizeChat(conv.convId, true)} className="text-white text-lg">←</button>
-            {conv.gaAnh ? (
-              <img src={conv.gaAnh} alt="" className="w-9 h-9 rounded-lg object-cover" />
-            ) : (
-              <div className="w-9 h-9 bg-red-700 rounded-lg flex items-center justify-center text-lg">🐓</div>
-            )}
-            <div className="flex-1 min-w-0">
-              <div className="text-white font-bold text-sm truncate">{conv.gaTen}</div>
-              <div className="text-red-200 text-xs">{conv.doiPhuongName}</div>
-            </div>
-            <Link href={`/ga/${conv.gaId}`} className="text-red-200 text-xs hover:text-white">Xem gà</Link>
-            <button onClick={() => closeChat(conv.convId)} className="text-white/80 hover:text-white ml-1">✕</button>
-          </div>
-
-          {/* Messages mobile */}
-          <div className="flex-1 overflow-y-auto p-4">
-            {conv.messages.length === 0 && (
-              <div className="text-center py-8">
-                <div className="text-4xl mb-2">👋</div>
-                <div className="text-sm text-gray-400 mb-4">Bắt đầu trò chuyện!</div>
-                <div className="flex flex-col gap-2 items-center">
-                  {['Gà còn không bạn?', 'Giá có thể bớt không?', 'Cho xem thêm ảnh được không?'].map(q => (
-                    <button key={q} onClick={() => sendMessage(conv.convId, q)}
-                      className="bg-gray-50 border border-gray-200 text-gray-600 text-sm px-4 py-2 rounded-full hover:bg-gray-100 transition">
-                      {q}
-                    </button>
-                  ))}
-                </div>
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+            {chat.messages.length === 0 && (
+              <div style={{ textAlign: 'center', paddingTop: 28 }}>
+                <div style={{ fontSize: 26, marginBottom: 6 }}>👋</div>
+                <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10 }}>Bắt đầu trò chuyện!</div>
+                {isProduct && ['Gà còn không?', 'Giá có thể bớt không?', 'Cho xem thêm ảnh không?'].map(q => (
+                  <button key={q} onClick={() => setInput(q)}
+                    style={{ display: 'block', width: '100%', marginBottom: 4, background: '#f5f5f5', border: '1px solid #eee', borderRadius: 99, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#555', textAlign: 'left' }}>
+                    {q}
+                  </button>
+                ))}
               </div>
             )}
-            {conv.messages.map(msg => (
-              <MessageItem
-                key={String(msg.id)}
-                msg={msg}
-                isMe={msg.sender_id === currentUser?.id}
-                doiPhuongName={conv.doiPhuongName}
-              />
-            ))}
+
+            {chat.messages.map(msg => {
+              const isMe = msg.sender_id === currentUser?.id;
+              if (msg.loai === 'system') return (
+                <div key={String(msg.id)} style={{ textAlign: 'center', margin: '4px 0' }}>
+                  <span style={{ background: '#fff9e6', color: '#856404', fontSize: 10, padding: '2px 8px', borderRadius: 99 }}>
+                    {msg.noi_dung}
+                  </span>
+                </div>
+              );
+              return (
+                <div key={String(msg.id)} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', marginBottom: 5, alignItems: 'flex-end', gap: 4 }}>
+                  {!isMe && (
+                    <div style={{ width: 20, height: 20, background: '#8B1A1A', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 9, flexShrink: 0 }}>
+                      {(chat.doiPhuongName || 'U')[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div style={{
+                    maxWidth: '74%', padding: '6px 10px', wordBreak: 'break-word',
+                    borderRadius: isMe ? '10px 10px 2px 10px' : '10px 10px 10px 2px',
+                    background: isMe ? '#8B1A1A' : '#f0f0f0',
+                    color: isMe ? '#fff' : '#333',
+                    fontSize: 12, lineHeight: 1.4,
+                    opacity: msg.pending ? 0.55 : 1,
+                  }}>
+                    {msg.noi_dung}
+                    <div style={{ fontSize: 9, marginTop: 2, opacity: 0.6, textAlign: 'right' }}>
+                      {msg.pending ? '⏳' : new Date(msg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input mobile */}
-          <div className="border-t border-gray-100 p-3 flex gap-2 items-center flex-shrink-0 bg-white">
+          {/* Input */}
+          <div style={{ borderTop: '1px solid #eee', padding: '6px 8px', display: 'flex', gap: 5, background: '#fafafa' }}>
             <input
               value={input}
               onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder="Nhắn tin..."
-              className="flex-1 border border-gray-200 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+              style={{ flex: 1, border: '1px solid #ddd', borderRadius: 99, padding: '5px 10px', fontSize: 12, outline: 'none', background: '#fff' }}
             />
             <button
               onClick={handleSend}
               disabled={!input.trim()}
-              className="w-10 h-10 bg-[#8B1A1A] text-white rounded-full flex items-center justify-center hover:bg-[#6B0F0F] transition disabled:opacity-40"
+              style={{ width: 30, height: 30, background: input.trim() ? '#8B1A1A' : '#ddd', border: 'none', borderRadius: '50%', color: '#fff', cursor: input.trim() ? 'pointer' : 'default', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
             >
               ➤
             </button>
           </div>
         </div>
       )}
-
-      {/* Mobile minimized — hiện floating button */}
-      {conv.minimized && (
-        <div
-          className="md:hidden fixed bottom-20 right-4 z-50"
-          style={{ bottom: 80 + index * 60 }}
-        >
-          <button
-            onClick={() => minimizeChat(conv.convId, false)}
-            className="w-14 h-14 bg-[#8B1A1A] rounded-full shadow-xl flex items-center justify-center relative"
-          >
-            <span className="text-2xl">💬</span>
-            {conv.unread > 0 && (
-              <span className="absolute -top-1 -right-1 bg-yellow-400 text-black text-xs font-black w-5 h-5 rounded-full flex items-center justify-center">
-                {conv.unread > 9 ? '9+' : conv.unread}
-              </span>
-            )}
-          </button>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
