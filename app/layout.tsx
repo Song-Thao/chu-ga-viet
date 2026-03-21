@@ -5,6 +5,7 @@ import Footer from '@/components/layout/Footer';
 import MobileNav from '@/components/layout/MobileNav';
 import { ChatPopupProvider } from '@/components/chat/ChatPopupContext';
 import ChatPopupManager from '@/components/chat/ChatPopupManager';
+import FloatingChatManager from '@/components/chat/FloatingChatWindow';
 
 export const metadata: Metadata = {
   title: 'Chủ Gà Việt - Mua bán gà chiến số 1',
@@ -22,8 +23,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </main>
           <Footer />
           <MobileNav />
-          {/* Chat popup manager — render ở mọi trang */}
+          {/* Chat popup cho trang sản phẩm (Trả giá) */}
           <ChatPopupManager />
+          {/* Floating window cho thông báo & tin nhắn */}
+          <FloatingChatManager />
         </ChatPopupProvider>
       </body>
     </html>
