@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
-import Link from 'next/link';
 
 // ============================================================
 // HELPERS
@@ -96,70 +94,171 @@ function PostContent({ text }: { text: string }) {
   );
 }
 
-function HoverVideoSidebar({ finalId, thumb, title, views }: { finalId: string; thumb: string; title: string; views: number }) {
-  const [hovering, setHovering] = useState(false);
-  const [muted, setMuted] = useState(true);
+// ── Floating Video Popup — kéo được, âm thanh bật mặc định ───
+function FloatingVideoPopup({ ytId, onClose, startX, startY, popupW, popupH }: {
+  ytId: string; onClose: () => void;
+  startX: number; startY: number;
+  popupW: number; popupH: number;
+}) {
+  const [pos, setPos] = useState({ x: startX, y: startY });
+  const dragging = useRef(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!dragging.current) return;
+      setPos({
+        x: Math.max(0, Math.min(window.innerWidth - popupW, e.clientX - dragOffset.current.x)),
+        y: Math.max(0, Math.min(window.innerHeight - popupH, e.clientY - dragOffset.current.y)),
+      });
+    }
+    function onUp() { dragging.current = false; }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [popupW, popupH]);
+
+  function startDrag(e: React.MouseEvent) {
+    dragging.current = true;
+    dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    e.preventDefault();
+  }
+
   return (
-    <div style={{ marginBottom: 12 }} onMouseEnter={() => setHovering(true)} onMouseLeave={() => { setHovering(false); setMuted(true); }}>
-      <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#000', paddingBottom: '56.25%' }}>
-        {hovering ? (
-          <>
-            <iframe key={`sidebar-${finalId}-${muted}`}
-              src={`https://www.youtube.com/embed/${finalId}?autoplay=1&mute=${muted ? 1 : 0}&controls=1&loop=1&playlist=${finalId}&rel=0`}
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
-              allow="autoplay; encrypted-media; fullscreen" allowFullScreen />
-            <button onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setMuted(m => !m); }}
-              style={{ position: 'absolute', top: 8, right: 8, zIndex: 20, background: muted ? 'rgba(200,0,0,0.85)' : 'rgba(0,150,0,0.85)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 700, padding: '4px 10px', cursor: 'pointer' }}>
-              {muted ? '🔇 Bật tiếng' : '🔊 Đang có tiếng'}
-            </button>
-          </>
-        ) : (
-          <>
-            <img src={thumb || `https://img.youtube.com/vi/${finalId}/mqdefault.jpg`}
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} alt={title} />
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18 }}>▶</div>
-            </div>
-          </>
-        )}
-        {views > 0 && (
-          <div style={{ position: 'absolute', bottom: 6, right: 8, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: 11, padding: '2px 6px', borderRadius: 4, zIndex: 1 }}>
-            ▶ {formatNum(views)}
-          </div>
-        )}
+    <div style={{
+      position: 'fixed', left: pos.x, top: pos.y,
+      width: popupW, zIndex: 9999,
+      borderRadius: 12, overflow: 'hidden',
+      boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+      background: '#000',
+    }}>
+      {/* Thanh kéo */}
+      <div onMouseDown={startDrag} style={{
+        height: 32, background: 'rgba(0,0,0,0.85)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 12px', cursor: 'grab', userSelect: 'none',
+      }}>
+        <span style={{ color: '#aaa', fontSize: 12 }}>⠿ Kéo để di chuyển</span>
+        <button onClick={onClose} style={{
+          background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%',
+          color: '#fff', width: 22, height: 22, cursor: 'pointer',
+          fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>✕</button>
       </div>
-      <p style={{ margin: '6px 0 0', fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{title}</p>
+      {/* Video — âm thanh bật mặc định, dùng controls gốc YouTube */}
+      <div style={{ paddingBottom: '56.25%', position: 'relative' }}>
+        <iframe
+          src={`https://www.youtube.com/embed/${ytId}?autoplay=1&mute=0&controls=1&loop=1&playlist=${ytId}&rel=0`}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
+          allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
     </div>
   );
 }
 
-function HoverVideoPost({ ytId }: { ytId: string }) {
-  const [hovering, setHovering] = useState(false);
-  const [muted, setMuted] = useState(true);
+// ── HoverVideoSidebar — thumbnail, hover → popup nổi ─────────
+function HoverVideoSidebar({ finalId, thumb, title, views }: {
+  finalId: string; thumb: string; title: string; views: number;
+}) {
+  const [showPopup, setShowPopup] = useState(false);
+  const thumbRef = useRef<HTMLDivElement>(null);
+
+  function handleMouseEnter() {
+    if (!thumbRef.current) return;
+    const rect = thumbRef.current.getBoundingClientRect();
+    const popupW = 480;
+    const popupH = popupW * 0.5625 + 32;
+    const x = Math.min(rect.left, window.innerWidth - popupW - 8);
+    const y = Math.max(8, rect.top - popupH / 2 + rect.height / 2);
+    setPopupPos({ x, y, popupW, popupH });
+    setShowPopup(true);
+  }
+
+  const [popupPos, setPopupPos] = useState({ x: 0, y: 0, popupW: 480, popupH: 302 });
+
   return (
-    <div style={{ paddingBottom: '56.25%', position: 'relative', background: '#000' }}
-      onMouseEnter={() => setHovering(true)} onMouseLeave={() => { setHovering(false); setMuted(true); }}>
-      {hovering ? (
-        <>
-          <iframe key={`post-${ytId}-${muted}`}
-            src={`https://www.youtube.com/embed/${ytId}?autoplay=1&mute=${muted ? 1 : 0}&controls=1&loop=1&playlist=${ytId}&rel=0`}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen />
-          <button onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setMuted(m => !m); }}
-            style={{ position: 'absolute', top: 10, right: 10, zIndex: 20, background: muted ? 'rgba(200,0,0,0.85)' : 'rgba(0,150,0,0.85)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, fontWeight: 700, padding: '5px 12px', cursor: 'pointer' }}>
-            {muted ? '🔇 Bật tiếng' : '🔊 Đang có tiếng'}
-          </button>
-        </>
-      ) : (
-        <>
-          <img src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} alt="video thumbnail" />
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: 'rgba(0,0,0,0.65)', borderRadius: '50%', width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 24 }}>▶</div>
-          </div>
-        </>
+    <>
+      {showPopup && (
+        <FloatingVideoPopup
+          ytId={finalId}
+          onClose={() => setShowPopup(false)}
+          startX={popupPos.x} startY={popupPos.y}
+          popupW={popupPos.popupW} popupH={popupPos.popupH}
+        />
       )}
-    </div>
+      <div ref={thumbRef} style={{ marginBottom: 12 }}>
+        {/* Thumbnail nhỏ — hover để mở popup */}
+        <div
+          onMouseEnter={handleMouseEnter}
+          style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#000', paddingBottom: '56.25%', cursor: 'pointer' }}
+        >
+          <img
+            src={thumb || `https://img.youtube.com/vi/${finalId}/mqdefault.jpg`}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            alt={title}
+          />
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: 'rgba(0,0,0,0.55)', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16 }}>▶</div>
+          </div>
+          <div style={{ position: 'absolute', bottom: 4, left: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 10, padding: '2px 5px', borderRadius: 3 }}>
+            🖱️ Rê để xem
+          </div>
+          {views > 0 && (
+            <div style={{ position: 'absolute', bottom: 4, right: 6, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: 10, padding: '2px 5px', borderRadius: 3 }}>
+              ▶ {formatNum(views)}
+            </div>
+          )}
+        </div>
+        <p style={{ margin: '5px 0 0', fontSize: 12, fontWeight: 600, lineHeight: 1.4 }}>{title}</p>
+      </div>
+    </>
+  );
+}
+
+// ── HoverVideoPost — thumbnail trong feed, hover → popup nổi ─
+function HoverVideoPost({ ytId }: { ytId: string }) {
+  const [showPopup, setShowPopup] = useState(false);
+  const [popupPos, setPopupPos] = useState({ x: 0, y: 0, popupW: 640, popupH: 392 });
+  const thumbRef = useRef<HTMLDivElement>(null);
+
+  function handleMouseEnter() {
+    if (!thumbRef.current) return;
+    const rect = thumbRef.current.getBoundingClientRect();
+    const popupW = Math.min(640, window.innerWidth - 16);
+    const popupH = popupW * 0.5625 + 32;
+    const x = Math.max(8, rect.left + rect.width / 2 - popupW / 2);
+    const y = Math.max(8, rect.top - popupH / 2 + rect.height / 2);
+    setPopupPos({ x, y, popupW, popupH });
+    setShowPopup(true);
+  }
+
+  return (
+    <>
+      {showPopup && (
+        <FloatingVideoPopup
+          ytId={ytId}
+          onClose={() => setShowPopup(false)}
+          startX={popupPos.x} startY={popupPos.y}
+          popupW={popupPos.popupW} popupH={popupPos.popupH}
+        />
+      )}
+      <div ref={thumbRef} onMouseEnter={handleMouseEnter}
+        style={{ paddingBottom: '56.25%', position: 'relative', background: '#000', cursor: 'pointer' }}>
+        <img
+          src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          alt="video thumbnail"
+        />
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 24 }}>▶</div>
+        </div>
+        <div style={{ position: 'absolute', bottom: 8, left: 12, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11, padding: '2px 8px', borderRadius: 4 }}>
+          🖱️ Rê chuột để xem
+        </div>
+      </div>
+    </>
   );
 }
 
