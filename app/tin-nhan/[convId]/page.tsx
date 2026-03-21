@@ -12,6 +12,7 @@ export default function ConvChatPage() {
   const [ga, setGa] = useState<any>(null);
   const [doiPhuong, setDoiPhuong] = useState<any>(null);
   const [isBuyer, setIsBuyer] = useState(false);
+  const [chatType, setChatType] = useState<'product' | 'user'>('product');
   const [messages, setMessages] = useState<any[]>([]);
   const [newMsg, setNewMsg] = useState('');
   const [loading, setLoading] = useState(true);
@@ -26,35 +27,38 @@ export default function ConvChatPage() {
       if (!user) { router.push('/login'); return; }
       setUser(user);
 
-      // Lấy conversation
       const { data: convData } = await supabase
         .from('conversations')
-        .select('id, ga_id, buyer_id, seller_id')
+        .select('id, ga_id, buyer_id, seller_id, type')
         .eq('id', convId)
         .single();
 
       if (!convData) { setLoading(false); return; }
       if (convData.buyer_id !== user.id && convData.seller_id !== user.id) {
-        router.push('/tin-nhan');
-        return;
+        router.push('/tin-nhan'); return;
       }
 
       setConv(convData);
       setIsBuyer(convData.buyer_id === user.id);
 
-      // Lấy gà
-      const { data: gaData } = await supabase
-        .from('ga')
-        .select('id, ten, gia, ga_images(url, is_primary)')
-        .eq('id', convData.ga_id)
-        .single();
-      setGa(gaData);
+      const type = convData.type || (convData.ga_id ? 'product' : 'user');
+      setChatType(type);
 
-      // Lấy đối phương
+      // Lấy thông tin gà nếu là product chat
+      if (convData.ga_id) {
+        const { data: gaData } = await supabase
+          .from('ga')
+          .select('id, ten, gia, ga_images(url, is_primary)')
+          .eq('id', convData.ga_id)
+          .maybeSingle();
+        setGa(gaData);
+      }
+
+      // Lấy thông tin đối phương
       const doiPhuongId = convData.buyer_id === user.id ? convData.seller_id : convData.buyer_id;
       const { data: dp } = await supabase
         .from('profiles')
-        .select('username')
+        .select('id, username, avatar_url')
         .eq('id', doiPhuongId)
         .maybeSingle();
       setDoiPhuong(dp);
@@ -72,9 +76,7 @@ export default function ConvChatPage() {
       supabase
         .channel(`conv-${convId}`)
         .on('postgres_changes', {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
+          event: 'INSERT', schema: 'public', table: 'messages',
           filter: `conversation_id=eq.${convId}`,
         }, (payload) => {
           setMessages(prev => {
@@ -116,28 +118,46 @@ export default function ConvChatPage() {
   );
 
   const anhGa = ga?.ga_images?.find((i: any) => i.is_primary)?.url || ga?.ga_images?.[0]?.url;
+  const isProduct = chatType === 'product' && ga;
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-4" style={{height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column'}}>
+    <div className="max-w-2xl mx-auto px-4 py-4" style={{ height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column' }}>
 
       {/* HEADER */}
       <div className="bg-white rounded-xl shadow-sm p-3 mb-3 flex items-center gap-3 flex-shrink-0">
         <Link href="/tin-nhan" className="text-gray-400 hover:text-gray-600 text-lg">←</Link>
-        {anhGa ? (
-          <img src={anhGa} alt="" className="w-10 h-10 object-cover rounded-lg flex-shrink-0" />
+
+        {/* Avatar: ảnh gà (product) hoặc avatar người (user chat) */}
+        {isProduct ? (
+          anhGa
+            ? <img src={anhGa} alt="" className="w-10 h-10 object-cover rounded-lg flex-shrink-0" />
+            : <div className="w-10 h-10 bg-orange-800 rounded-lg flex items-center justify-center text-xl flex-shrink-0">🐓</div>
         ) : (
-          <div className="w-10 h-10 bg-orange-800 rounded-lg flex items-center justify-center text-xl flex-shrink-0">🐓</div>
+          doiPhuong?.avatar_url
+            ? <img src={doiPhuong.avatar_url} alt="" className="w-10 h-10 object-cover rounded-full flex-shrink-0" />
+            : <div className="w-10 h-10 bg-[#8B1A1A] rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
+                {(doiPhuong?.username || 'U')[0].toUpperCase()}
+              </div>
         )}
+
         <div className="flex-1 min-w-0">
-          <div className="font-bold text-sm text-gray-800 truncate">{ga?.ten}</div>
-          <div className="text-xs text-gray-500">
-            {isBuyer ? `Người bán: ${doiPhuong?.username || 'Ẩn'}` : `Người mua: ${doiPhuong?.username || 'Ẩn'}`}
+          {/* Tên chính: tên gà (product) hoặc tên người (user chat) */}
+          <div className="font-bold text-sm text-gray-800 truncate">
+            {isProduct ? ga.ten : (doiPhuong?.username || 'Người dùng')}
+          </div>
+          {/* Dòng phụ: chỉ hiện tên đối phương */}
+          <div className="text-xs text-gray-500 truncate">
+            {doiPhuong?.username || 'Người dùng'}
           </div>
         </div>
-        <Link href={`/ga/${conv?.ga_id}`}
-          className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-full hover:bg-gray-200 transition whitespace-nowrap">
-          Xem gà
-        </Link>
+
+        {/* Nút xem gà chỉ hiện với product chat */}
+        {isProduct && (
+          <Link href={`/ga/${conv?.ga_id}`}
+            className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-full hover:bg-gray-200 transition whitespace-nowrap">
+            Xem gà
+          </Link>
+        )}
       </div>
 
       {/* MESSAGES */}
@@ -146,7 +166,8 @@ export default function ConvChatPage() {
           <div className="text-center py-8 text-gray-400">
             <div className="text-3xl mb-2">👋</div>
             <div className="text-sm mb-3">Bắt đầu trò chuyện</div>
-            {!isBuyer && (
+            {/* Quick replies cho người bán trong product chat */}
+            {isProduct && !isBuyer && (
               <div className="flex gap-2 justify-center flex-wrap">
                 {['Gà vẫn còn bán bạn nhé!', 'Giá có thể thương lượng', 'Bạn muốn xem thêm ảnh không?'].map(q => (
                   <button key={q} onClick={() => sendMessage(q)}
