@@ -1,14 +1,14 @@
 'use client';
-import { useChatPopup } from './ChatPopupContext';
+import { useChat } from './ChatContext';
 import ChatWindow from './ChatWindow';
 
 export default function ChatPopupManager() {
-  const { conversations } = useChatPopup();
-  if (conversations.length === 0) return null;
+  const { openChats } = useChat();
+  if (openChats.length === 0) return null;
   return (
     <>
-      {conversations.map((conv, index) => (
-        <ChatWindow key={conv.convId} conv={conv} index={index} />
+      {openChats.map((chat, index) => (
+        <ChatWindow key={chat.convId} chat={chat} index={index} />
       ))}
     </>
   );
