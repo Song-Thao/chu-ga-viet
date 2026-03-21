@@ -3,13 +3,13 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { useChatPopup } from '@/components/chat/ChatPopupContext';
+import { useChat } from '@/components/chat/ChatContext';
 
 export const dynamic = 'force-dynamic';
 
 // ── Modal Mua Ngay ────────────────────────────────────────────
 function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClose: () => void }) {
-  const { openChat } = useChatPopup();
+  const { openChat } = useChat();
   const [mode, setMode] = useState<'choose' | 'qua-san' | 'tu-mua' | 'success'>('choose');
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState<any>(null);
@@ -359,7 +359,7 @@ function ModalLienHe({ nguoiBan, onClose }: { nguoiBan: any; onClose: () => void
 // ── Main Page ─────────────────────────────────────────────────
 export default function GaDetailPage() {
   const { id } = useParams();
-  const { openChat } = useChatPopup();
+  const { openChat } = useChat();
 
   const [ga, setGa] = useState<any>(null);
   const [aiData, setAiData] = useState<any>(null);
