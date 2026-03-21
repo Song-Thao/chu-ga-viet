@@ -78,8 +78,6 @@ interface Banner {
 // ============================================================
 // SUB-COMPONENTS
 // ============================================================
-
-/** Nội dung bài viết — collapse sau 4 dòng */
 function PostContent({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
   const lines = text.split('\n');
@@ -98,49 +96,29 @@ function PostContent({ text }: { text: string }) {
   );
 }
 
-/** Video sidebar cột phải — hover play, nút mute toggle */
 function HoverVideoSidebar({ finalId, thumb, title, views }: { finalId: string; thumb: string; title: string; views: number }) {
   const [hovering, setHovering] = useState(false);
   const [muted, setMuted] = useState(true);
-
   return (
     <div style={{ marginBottom: 12 }} onMouseEnter={() => setHovering(true)} onMouseLeave={() => { setHovering(false); setMuted(true); }}>
       <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#000', paddingBottom: '56.25%' }}>
         {hovering ? (
           <>
-            <iframe
-              key={`sidebar-${finalId}-${muted}`}
+            <iframe key={`sidebar-${finalId}-${muted}`}
               src={`https://www.youtube.com/embed/${finalId}?autoplay=1&mute=${muted ? 1 : 0}&controls=1&loop=1&playlist=${finalId}&rel=0`}
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
-              allow="autoplay; encrypted-media; fullscreen"
-              allowFullScreen
-            />
-            {/* Nút bật tiếng đặt ngoài iframe để luôn click được */}
-            <button
-              onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setMuted(m => !m); }}
-              style={{
-                position: 'absolute', top: 8, right: 8, zIndex: 20,
-                background: muted ? 'rgba(200,0,0,0.85)' : 'rgba(0,150,0,0.85)',
-                border: 'none', borderRadius: 6, color: '#fff',
-                fontSize: 12, fontWeight: 700, padding: '4px 10px', cursor: 'pointer',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
-              }}
-            >
+              allow="autoplay; encrypted-media; fullscreen" allowFullScreen />
+            <button onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setMuted(m => !m); }}
+              style={{ position: 'absolute', top: 8, right: 8, zIndex: 20, background: muted ? 'rgba(200,0,0,0.85)' : 'rgba(0,150,0,0.85)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 700, padding: '4px 10px', cursor: 'pointer' }}>
               {muted ? '🔇 Bật tiếng' : '🔊 Đang có tiếng'}
             </button>
           </>
         ) : (
           <>
-            <img
-              src={thumb || `https://img.youtube.com/vi/${finalId}/mqdefault.jpg`}
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-              alt={title}
-            />
+            <img src={thumb || `https://img.youtube.com/vi/${finalId}/mqdefault.jpg`}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} alt={title} />
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18 }}>▶</div>
-            </div>
-            <div style={{ position: 'absolute', bottom: 6, left: 8, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10, padding: '2px 6px', borderRadius: 4 }}>
-              🖱️ Rê để xem trước
             </div>
           </>
         )}
@@ -151,56 +129,33 @@ function HoverVideoSidebar({ finalId, thumb, title, views }: { finalId: string; 
         )}
       </div>
       <p style={{ margin: '6px 0 0', fontSize: 13, fontWeight: 600, lineHeight: 1.4 }}>{title}</p>
-      {views > 0 && <p style={{ margin: 0, fontSize: 11, color: '#888' }}>{formatNum(views)} lượt xem</p>}
     </div>
   );
 }
 
-/** Video trong bài post cột giữa — hover play, nút mute toggle */
 function HoverVideoPost({ ytId }: { ytId: string }) {
   const [hovering, setHovering] = useState(false);
   const [muted, setMuted] = useState(true);
-
   return (
-    <div
-      style={{ paddingBottom: '56.25%', position: 'relative', background: '#000' }}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => { setHovering(false); setMuted(true); }}
-    >
+    <div style={{ paddingBottom: '56.25%', position: 'relative', background: '#000' }}
+      onMouseEnter={() => setHovering(true)} onMouseLeave={() => { setHovering(false); setMuted(true); }}>
       {hovering ? (
         <>
-          <iframe
-            key={`post-${ytId}-${muted}`}
+          <iframe key={`post-${ytId}-${muted}`}
             src={`https://www.youtube.com/embed/${ytId}?autoplay=1&mute=${muted ? 1 : 0}&controls=1&loop=1&playlist=${ytId}&rel=0`}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-            allowFullScreen
-          />
-          <button
-            onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setMuted(m => !m); }}
-            style={{
-              position: 'absolute', top: 10, right: 10, zIndex: 20,
-              background: muted ? 'rgba(200,0,0,0.85)' : 'rgba(0,150,0,0.85)',
-              border: 'none', borderRadius: 6, color: '#fff',
-              fontSize: 13, fontWeight: 700, padding: '5px 12px', cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
-            }}
-          >
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowFullScreen />
+          <button onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setMuted(m => !m); }}
+            style={{ position: 'absolute', top: 10, right: 10, zIndex: 20, background: muted ? 'rgba(200,0,0,0.85)' : 'rgba(0,150,0,0.85)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, fontWeight: 700, padding: '5px 12px', cursor: 'pointer' }}>
             {muted ? '🔇 Bật tiếng' : '🔊 Đang có tiếng'}
           </button>
         </>
       ) : (
         <>
-          <img
-            src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-            alt="video thumbnail"
-          />
+          <img src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} alt="video thumbnail" />
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ background: 'rgba(0,0,0,0.65)', borderRadius: '50%', width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 24 }}>▶</div>
-          </div>
-          <div style={{ position: 'absolute', bottom: 8, left: 12, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11, padding: '2px 8px', borderRadius: 4 }}>
-            🖱️ Rê chuột để xem trước
           </div>
         </>
       )}
@@ -233,7 +188,6 @@ export default function CongDongPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
-  // Banner màu mặc định theo vị trí
   const bannerColors = ['#7B1818', '#1a3a6e', '#4a1a00'];
   const bannerEmojis = ['💊', '🥚', '🌾'];
 
@@ -245,26 +199,17 @@ export default function CongDongPage() {
   useEffect(() => { fetchSidebarData(); }, []);
 
   async function fetchSidebarData() {
-    // Hot posts
-    const { data: hotData } = await supabase
-      .from('posts').select('id, noi_dung, like_count, likes')
+    const { data: hotData } = await supabase.from('posts').select('id, noi_dung, like_count, likes')
       .eq('status', 'active').order('like_count', { ascending: false }).limit(5);
     if (hotData) setHotPosts(hotData as Post[]);
 
-    // Featured videos
     const { data: vidData } = await supabase.from('videos').select('*').limit(5);
     if (vidData) setFeaturedVideos(vidData);
 
-    // Top sự kê — lấy từ profiles, dùng username (không có full_name)
-    const { data: suKeData } = await supabase
-      .from('profiles')
-      .select('id, username, avatar_url, trust_score, role')
-      .eq('status', 'active')
-      .order('trust_score', { ascending: false })
-      .limit(5);
+    const { data: suKeData } = await supabase.from('profiles').select('id, username, avatar_url, trust_score, role')
+      .eq('status', 'active').order('trust_score', { ascending: false }).limit(5);
     if (suKeData) setTopSuKe(suKeData);
 
-    // Banners từ Supabase (bảng banners)
     const { data: bannerData } = await supabase.from('banners').select('*').order('vi_tri');
     if (bannerData && bannerData.length > 0) setBanners(bannerData);
   }
@@ -378,7 +323,7 @@ export default function CongDongPage() {
 
       {/* POPUP ĐĂNG BÀI */}
       {showPopup && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 12px' }}>
           <div ref={popupRef} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 520, padding: 24, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid #e4e6ea', paddingBottom: 14 }}>
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Tạo bài viết</h3>
@@ -406,33 +351,31 @@ export default function CongDongPage() {
               </button>
             )}
             <input value={postYoutube} onChange={e => setPostYoutube(e.target.value)}
-              placeholder="🎬 Dán link YouTube: https://youtu.be/... (không bắt buộc)"
+              placeholder="🎬 Dán link YouTube (không bắt buộc)"
               style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 8, boxSizing: 'border-box', outline: 'none', color: '#555' }} />
-            <p style={{ fontSize: 11, color: '#999', margin: '4px 0 0 4px' }}>💡 Hỗ trợ link YouTube thường, youtu.be, hoặc paste iframe embed</p>
             <button onClick={submitPost} disabled={submitting || !postContent.trim()}
-              style={{ width: '100%', marginTop: 14, padding: '13px', background: submitting ? '#e88' : postContent.trim() ? '#c0392b' : '#ccc', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: postContent.trim() && !submitting ? 'pointer' : 'not-allowed', transition: 'background 0.2s' }}>
+              style={{ width: '100%', marginTop: 14, padding: '13px', background: submitting ? '#e88' : postContent.trim() ? '#c0392b' : '#ccc', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: postContent.trim() && !submitting ? 'pointer' : 'not-allowed' }}>
               {submitting ? '⏳ Đang đăng bài...' : '🚀 Đăng bài'}
             </button>
           </div>
         </div>
       )}
 
-      {/* 3 CỘT */}
-      <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: '240px 1fr 280px', gap: 16, padding: '16px 12px' }}>
+      {/* LAYOUT 3 CỘT */}
+      <div className="cgv-grid" style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: '240px 1fr 280px', gap: 16, padding: '16px 12px' }}>
 
         {/* CỘT TRÁI */}
-        <aside style={{ position: 'sticky', top: 80, height: 'fit-content' }}>
+        <aside className="cgv-left" style={{ position: 'sticky', top: 80, height: 'fit-content' }}>
           <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 12 }}>
             {[
               { href: '/', icon: '🏠', label: 'Trang chủ' },
               { href: '/cong-dong', icon: '👥', label: 'Cộng đồng', active: true },
               { href: '/cho', icon: '🐓', label: 'Gà đang bán' },
-              // Đổi /videos → /thu-vien vì không có route /videos
               { href: '/thu-vien', icon: '🎬', label: 'Video thực chiến' },
               { href: '/thu-vien', icon: '📚', label: 'Bài viết kiến thức' },
             ].map((item, idx) => (
               <Link key={`${item.href}-${idx}`} href={item.href} style={{ textDecoration: 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', background: item.active ? '#fdf0f0' : 'transparent', borderLeft: item.active ? '3px solid #c0392b' : '3px solid transparent', color: item.active ? '#c0392b' : '#333', fontWeight: item.active ? 700 : 400, transition: 'all 0.15s' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', background: item.active ? '#fdf0f0' : 'transparent', borderLeft: item.active ? '3px solid #c0392b' : '3px solid transparent', color: item.active ? '#c0392b' : '#333', fontWeight: item.active ? 700 : 400 }}>
                   <span style={{ fontSize: 18 }}>{item.icon}</span>
                   <span style={{ fontSize: 14 }}>{item.label}</span>
                 </div>
@@ -440,29 +383,23 @@ export default function CongDongPage() {
             ))}
           </div>
 
-          {/* Top sự kê — data thật từ profiles */}
           <div style={{ background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <div style={{ fontWeight: 700, color: '#c0392b', fontSize: 13, marginBottom: 12 }}>🏆 Top sự kê uy tín</div>
             {topSuKe.length === 0 ? (
               <p style={{ color: '#aaa', fontSize: 13 }}>Đang tải...</p>
             ) : topSuKe.map((sk, i) => {
               const displayName = sk.username || 'Người dùng';
-              const avatar = sk.avatar_url
-                || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=8B0000&color=fff`;
+              const avatar = sk.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=8B0000&color=fff`;
               return (
                 <Link key={sk.id} href={`/ho-so/${sk.id}`} style={{ textDecoration: 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, cursor: 'pointer', padding: '4px 6px', borderRadius: 8, transition: 'background 0.15s' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#fdf0f0')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, padding: '4px 6px', borderRadius: 8 }}>
                     <div style={{ position: 'relative' }}>
                       <img src={avatar} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} alt={displayName} />
                       {i === 0 && <span style={{ position: 'absolute', top: -4, right: -4, fontSize: 12 }}>👑</span>}
                     </div>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>{displayName}</div>
-                      {sk.trust_score > 0 && (
-                        <div style={{ fontSize: 11, color: '#c0392b' }}>⭐ {sk.trust_score} điểm</div>
-                      )}
+                      {sk.trust_score > 0 && <div style={{ fontSize: 11, color: '#c0392b' }}>⭐ {sk.trust_score} điểm</div>}
                     </div>
                   </div>
                 </Link>
@@ -506,24 +443,21 @@ export default function CongDongPage() {
               <p style={{ color: '#888', marginBottom: 16 }}>Chưa có bài viết nào</p>
               <button onClick={() => setShowPopup(true)} style={{ background: '#c0392b', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 700, cursor: 'pointer' }}>Viết bài đầu tiên</button>
             </div>
-          ) : (
-            posts.map(post => (
-              <PostCard
-                key={post.id} post={post} comments={comments[post.id] || []}
-                liked={!!likedPosts[post.id]} expanded={!!expandedComments[post.id]}
-                commentInput={commentInputs[post.id] || ''} currentUserAvatar={userAvatar}
-                onLike={() => likePost(post.id)} onToggleComments={() => toggleComments(post.id)}
-                onCommentChange={v => setCommentInputs(prev => ({ ...prev, [post.id]: v }))}
-                onCommentSubmit={() => submitComment(post.id)}
-                onShare={() => sharePost(post.id)} onReport={() => reportPost(post.id)}
-              />
-            ))
-          )}
+          ) : posts.map(post => (
+            <PostCard
+              key={post.id} post={post} comments={comments[post.id] || []}
+              liked={!!likedPosts[post.id]} expanded={!!expandedComments[post.id]}
+              commentInput={commentInputs[post.id] || ''} currentUserAvatar={userAvatar}
+              onLike={() => likePost(post.id)} onToggleComments={() => toggleComments(post.id)}
+              onCommentChange={v => setCommentInputs(prev => ({ ...prev, [post.id]: v }))}
+              onCommentSubmit={() => submitComment(post.id)}
+              onShare={() => sharePost(post.id)} onReport={() => reportPost(post.id)}
+            />
+          ))}
         </main>
 
         {/* CỘT PHẢI */}
-        <aside style={{ position: 'sticky', top: 80, height: 'fit-content' }}>
-          {/* Video nổi bật */}
+        <aside className="cgv-right" style={{ position: 'sticky', top: 80, height: 'fit-content' }}>
           <div style={{ background: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>🎬 Video nổi bật</div>
             {featuredVideos.length === 0 ? (
@@ -531,20 +465,16 @@ export default function CongDongPage() {
             ) : featuredVideos.map((v: any) => {
               const ytRaw = v.youtube_url || v.embed_url || v.video_url || v.url || v.link || '';
               const ytId = getYoutubeId(ytRaw);
-              const embedId = !ytId && v.embed_url ? (v.embed_url.split('?')[0].split('/').pop() || null) : null;
-              const finalId = ytId || embedId || null;
-              const title = v.tieu_de || v.title || v.ten || v.mo_ta || v.noi_dung || 'Video';
+              const finalId = ytId || null;
+              const title = v.tieu_de || v.title || v.ten || 'Video';
               const views = v.luot_xem || v.views || v.view_count || 0;
               const thumb = v.thumbnail || v.anh_dai_dien || v.image_url || '';
               return finalId ? (
                 <HoverVideoSidebar key={v.id} finalId={finalId} thumb={thumb} title={title} views={views} />
-              ) : (
-                <div key={v.id} style={{ background: '#f0f2f5', borderRadius: 8, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aaa', marginBottom: 12 }}>🎬</div>
-              );
+              ) : null;
             })}
           </div>
 
-          {/* Bài viết hot */}
           <div style={{ background: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: '#c0392b', marginBottom: 12 }}>🔥 Bài viết hot</div>
             {hotPosts.length === 0 ? (
@@ -562,14 +492,13 @@ export default function CongDongPage() {
             })}
           </div>
 
-          {/* Banners từ Supabase (bảng banners) */}
           {banners.length > 0 ? banners.map((b, idx) => (
             b.link ? (
               <a key={b.vi_tri} href={b.link} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'block' }}>
-                <div style={{ background: bannerColors[idx] || '#7B1818', borderRadius: 10, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ background: bannerColors[idx] || '#7B1818', borderRadius: 10, padding: '14px 16px', marginBottom: 10, color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ fontSize: 28 }}>{bannerEmojis[idx] || '📢'}</span>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.4 }}>{b.tieu_de}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{b.tieu_de}</div>
                     {b.tieu_de_phu && <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>{b.tieu_de_phu}</div>}
                   </div>
                 </div>
@@ -578,33 +507,37 @@ export default function CongDongPage() {
               <div key={b.vi_tri} style={{ background: bannerColors[idx] || '#7B1818', borderRadius: 10, padding: '14px 16px', marginBottom: 10, color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 28 }}>{bannerEmojis[idx] || '📢'}</span>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.4 }}>{b.tieu_de}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{b.tieu_de}</div>
                   {b.tieu_de_phu && <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>{b.tieu_de_phu}</div>}
                 </div>
               </div>
             )
-          )) : (
-            // Fallback nếu chưa có data banners
-            [
-              { bg: '#7B1818', text: 'Vitamin B12', sub: 'CHO GÀ', emoji: '💊' },
-              { bg: '#1a3a6e', text: 'Máy ấp trứng', sub: 'Tự động', emoji: '🥚' },
-              { bg: '#4a1a00', text: 'Thức ăn', sub: 'Cho gà đá', emoji: '🌾' },
-            ].map(b => (
-              <div key={b.text} style={{ background: b.bg, borderRadius: 10, padding: '14px 16px', marginBottom: 10, color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: 28 }}>{b.emoji}</span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{b.text}</div>
-                  <div style={{ fontSize: 11, opacity: 0.8 }}>{b.sub}</div>
-                </div>
+          )) : [
+            { bg: '#7B1818', text: 'Vitamin B12', sub: 'CHO GÀ', emoji: '💊' },
+            { bg: '#1a3a6e', text: 'Máy ấp trứng', sub: 'Tự động', emoji: '🥚' },
+            { bg: '#4a1a00', text: 'Thức ăn', sub: 'Cho gà đá', emoji: '🌾' },
+          ].map(b => (
+            <div key={b.text} style={{ background: b.bg, borderRadius: 10, padding: '14px 16px', marginBottom: 10, color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 28 }}>{b.emoji}</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{b.text}</div>
+                <div style={{ fontSize: 11, opacity: 0.8 }}>{b.sub}</div>
               </div>
-            ))
-          )}
+            </div>
+          ))}
         </aside>
       </div>
 
+      {/* CSS RESPONSIVE */}
       <style>{`
-        @media (max-width: 1024px) { .cgv-grid { grid-template-columns: 200px 1fr !important; } .cgv-right { display: none !important; } }
-        @media (max-width: 768px) { .cgv-grid { grid-template-columns: 1fr !important; } .cgv-left { display: none !important; } }
+        @media (max-width: 1024px) {
+          .cgv-grid { grid-template-columns: 200px 1fr !important; }
+          .cgv-right { display: none !important; }
+        }
+        @media (max-width: 768px) {
+          .cgv-grid { grid-template-columns: 1fr !important; padding: 8px !important; }
+          .cgv-left { display: none !important; }
+        }
       `}</style>
     </div>
   );
@@ -638,7 +571,7 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
             <div style={{ fontSize: 12, color: '#888' }}>{timeAgo(post.created_at)}</div>
           </div>
         </div>
-        <button onClick={onReport} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 20, padding: '0 4px' }} title="Báo cáo">⋯</button>
+        <button onClick={onReport} style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 20, padding: '0 4px' }}>⋯</button>
       </div>
 
       <PostContent text={postText} />
@@ -660,10 +593,9 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
           { icon: '⚠️', label: 'Báo cáo', color: '#65676b', action: onReport },
         ].map(btn => (
           <button key={btn.label} onClick={btn.action}
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 4px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontSize: 13, fontWeight: 600, color: btn.color, transition: 'background 0.15s' }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#f0f2f5')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-            <span>{btn.icon}</span> {btn.label}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 4px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontSize: 13, fontWeight: 600, color: btn.color }}>
+            <span>{btn.icon}</span>
+            <span className="cgv-btn-label">{btn.label}</span>
           </button>
         ))}
       </div>
