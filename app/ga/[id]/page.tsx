@@ -7,8 +7,33 @@ import { useChat } from '@/components/chat/ChatContext';
 
 export const dynamic = 'force-dynamic';
 
+// ── Helper: lấy hoặc tạo conversation ────────────────────────
+async function getOrCreateConv(gaId: string, sellerId: string, buyerId: string): Promise<string | null> {
+  // Tìm conversation đã có
+  const { data: existing } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('ga_id', gaId)
+    .eq('seller_id', sellerId)
+    .eq('buyer_id', buyerId)
+    .maybeSingle();
+
+  if (existing) return existing.id;
+
+  // Tạo mới
+  const { data: created } = await supabase
+    .from('conversations')
+    .insert({ ga_id: gaId, seller_id: sellerId, buyer_id: buyerId, type: 'product' })
+    .select('id')
+    .single();
+
+  return created?.id || null;
+}
+
 // ── Modal Mua Ngay ────────────────────────────────────────────
-function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClose: () => void }) {
+function ModalMuaNgay({ ga, nguoiBan, currentUser, onClose }: {
+  ga: any; nguoiBan: any; currentUser: any; onClose: () => void;
+}) {
   const { openChat } = useChat();
   const [mode, setMode] = useState<'choose' | 'qua-san' | 'tu-mua' | 'success'>('choose');
   const [loading, setLoading] = useState(false);
@@ -30,20 +55,18 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
   const tkSo = config?.tk_so || '7207205286010';
   const tkBin = config?.tk_bin || '970405';
   const tkNganHang = config?.tk_ngan_hang || 'VietinBank';
-  const zalo = config?.zalo || '0917161003';
 
   async function handleDatCoc() {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { alert('Vui lòng đăng nhập!'); setLoading(false); return; }
-    if (user.id === ga.user_id) { alert('Bạn không thể mua gà của chính mình!'); setLoading(false); return; }
+    if (!currentUser) { alert('Vui lòng đăng nhập!'); setLoading(false); return; }
+    if (currentUser.id === ga.user_id) { alert('Bạn không thể mua gà của chính mình!'); setLoading(false); return; }
 
     const ma = `CGV-${ga.id}-${Date.now()}`;
     setMaGD(ma);
 
     const { error } = await supabase.from('orders').insert({
       ga_id: ga.id,
-      buyer_id: user.id,
+      buyer_id: currentUser.id,
       seller_id: ga.user_id,
       gia: ga.gia,
       tien_coc: tiencoc,
@@ -52,9 +75,19 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
     });
 
     if (!error) {
-      // Mở chat thông báo cho người bán
+      // Mở chat với người bán
       const anhGa = ga.ga_images?.find((i: any) => i.is_primary)?.url || ga.ga_images?.[0]?.url || '';
-      await openChat(ga.id, ga.user_id, ga.ten, anhGa);
+      const convId = await getOrCreateConv(ga.id, ga.user_id, currentUser.id);
+      if (convId) {
+        await openChat({
+          convId,
+          type: 'product',
+          gaId: ga.id,
+          gaTen: ga.ten,
+          gaAnh: anhGa,
+          doiPhuongId: ga.user_id,
+        });
+      }
       setMode('success');
     } else {
       alert('Lỗi: ' + error.message);
@@ -85,11 +118,9 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
         </div>
 
         <div className="p-5">
-
-          {/* ── BƯỚC 1: CHỌN HÌNH THỨC ── */}
+          {/* BƯỚC 1: CHỌN HÌNH THỨC */}
           {mode === 'choose' && (
             <>
-              {/* Thông tin gà */}
               <div className="flex gap-3 bg-gray-50 rounded-xl p-3 mb-5">
                 {ga.ga_images?.[0]?.url ? (
                   <img src={ga.ga_images.find((i: any) => i.is_primary)?.url || ga.ga_images[0].url}
@@ -100,15 +131,11 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
                 <div>
                   <div className="font-black text-gray-900">{ga.ten}</div>
                   <div className="text-xs text-gray-500">{ga.loai_ga} • {ga.khu_vuc}</div>
-                  <div className="text-[#8B1A1A] font-black text-base mt-0.5">
-                    {giaGa.toLocaleString('vi-VN')} đ
-                  </div>
+                  <div className="text-[#8B1A1A] font-black text-base mt-0.5">{giaGa.toLocaleString('vi-VN')} đ</div>
                 </div>
               </div>
 
-              {/* 2 lựa chọn */}
               <div className="space-y-3">
-                {/* Mua qua sàn */}
                 <button onClick={() => setMode('qua-san')}
                   className="w-full text-left border-2 border-green-500 rounded-xl p-4 hover:bg-green-50 transition group">
                   <div className="flex items-start gap-3">
@@ -119,9 +146,9 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
                         <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">AN TOÀN</span>
                       </div>
                       <div className="text-sm text-green-700 mt-1">
-                        ✓ Đặt cọc {cocPercent}% ({tiencoc.toLocaleString('vi-VN')}đ) qua sàn<br/>
-                        ✓ Admin xác nhận & bảo đảm giao dịch<br/>
-                        ✓ Hoàn cọc nếu gà không đúng mô tả<br/>
+                        ✓ Đặt cọc {cocPercent}% ({tiencoc.toLocaleString('vi-VN')}đ) qua sàn<br />
+                        ✓ Admin xác nhận & bảo đảm giao dịch<br />
+                        ✓ Hoàn cọc nếu gà không đúng mô tả<br />
                         ✓ Phí sàn {phiPercent}% ({phiGD.toLocaleString('vi-VN')}đ)
                       </div>
                     </div>
@@ -129,7 +156,6 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
                   </div>
                 </button>
 
-                {/* Tự mua riêng */}
                 <button onClick={() => setMode('tu-mua')}
                   className="w-full text-left border-2 border-orange-300 rounded-xl p-4 hover:bg-orange-50 transition group">
                   <div className="flex items-start gap-3">
@@ -137,8 +163,8 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
                     <div className="flex-1">
                       <div className="font-black text-orange-800">Tự liên hệ mua riêng</div>
                       <div className="text-sm text-orange-700 mt-1">
-                        ✗ Không có bảo đảm từ sàn<br/>
-                        ✗ Rủi ro lừa đảo cao hơn<br/>
+                        ✗ Không có bảo đảm từ sàn<br />
+                        ✗ Rủi ro lừa đảo cao hơn<br />
                         ✓ Không mất phí sàn
                       </div>
                     </div>
@@ -149,15 +175,14 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
             </>
           )}
 
-          {/* ── BƯỚC 2A: MUA QUA SÀN ── */}
+          {/* BƯỚC 2A: MUA QUA SÀN */}
           {mode === 'qua-san' && (
             <>
-              {/* Chi tiết giao dịch */}
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
                 <div className="font-bold text-green-800 mb-3">📋 Chi tiết giao dịch</div>
                 <div className="space-y-2 text-sm">
                   {[
-                    { label: 'Giá gà', value: `${giaGa.toLocaleString('vi-VN')} đ`, bold: true },
+                    { label: 'Giá gà', value: `${giaGa.toLocaleString('vi-VN')} đ` },
                     { label: `Tiền cọc (${cocPercent}%)`, value: `${tiencoc.toLocaleString('vi-VN')} đ`, color: 'text-blue-600' },
                     { label: `Phí sàn (${phiPercent}%)`, value: `${phiGD.toLocaleString('vi-VN')} đ`, color: 'text-gray-500' },
                     { label: 'Người bán', value: nguoiBan?.username || 'Người bán' },
@@ -170,7 +195,6 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
                 </div>
               </div>
 
-              {/* QR VietQR */}
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
                 <div className="font-bold text-blue-800 mb-3">📱 Quét QR đặt cọc</div>
                 <div className="flex gap-4 items-center">
@@ -187,7 +211,7 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
               </div>
 
               <div className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 mb-4">
-                💡 Sau khi chuyển khoản, nhấn <strong>"Xác nhận đã cọc"</strong> — admin sẽ kiểm tra và xác nhận trong vòng 24h. Giao dịch sẽ được bảo đảm bởi Chủ Gà Việt.
+                💡 Sau khi chuyển khoản, nhấn <strong>"Xác nhận đã cọc"</strong> — admin sẽ kiểm tra trong vòng 24h.
               </div>
 
               <div className="flex gap-3">
@@ -203,10 +227,9 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
             </>
           )}
 
-          {/* ── BƯỚC 2B: TỰ MUA RIÊNG ── */}
+          {/* BƯỚC 2B: TỰ MUA RIÊNG */}
           {mode === 'tu-mua' && (
             <>
-              {/* Cảnh báo */}
               <div className="bg-orange-50 border-2 border-orange-400 rounded-xl p-4 mb-4">
                 <div className="flex items-start gap-2">
                   <span className="text-2xl">⚠️</span>
@@ -222,7 +245,6 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
                 </div>
               </div>
 
-              {/* Thông tin liên hệ người bán */}
               <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
                 <div className="font-bold text-gray-700 mb-3">👤 Thông tin người bán</div>
                 <div className="flex items-center gap-3 mb-3">
@@ -234,24 +256,17 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
                     <div className="text-xs text-gray-500">⭐ {nguoiBan?.trust_score || 5.0} điểm uy tín</div>
                   </div>
                 </div>
-
                 {nguoiBan?.phone && nguoiBan?.phone_visibility !== 'private' ? (
                   <div className="space-y-2">
                     <a href={`tel:${nguoiBan.phone}`}
                       className="flex items-center gap-3 bg-green-50 border border-green-200 text-green-800 font-bold py-2.5 px-4 rounded-xl hover:bg-green-100 transition">
                       <span className="text-xl">📞</span>
-                      <div>
-                        <div className="text-xs text-green-600 font-normal">Gọi điện</div>
-                        <div>{nguoiBan.phone}</div>
-                      </div>
+                      <div><div className="text-xs text-green-600 font-normal">Gọi điện</div><div>{nguoiBan.phone}</div></div>
                     </a>
                     <a href={`https://zalo.me/${nguoiBan.phone}`} target="_blank"
                       className="flex items-center gap-3 bg-blue-50 border border-blue-200 text-blue-800 font-bold py-2.5 px-4 rounded-xl hover:bg-blue-100 transition">
                       <span className="text-xl">💬</span>
-                      <div>
-                        <div className="text-xs text-blue-600 font-normal">Zalo</div>
-                        <div>{nguoiBan.phone}</div>
-                      </div>
+                      <div><div className="text-xs text-blue-600 font-normal">Zalo</div><div>{nguoiBan.phone}</div></div>
                     </a>
                   </div>
                 ) : (
@@ -274,7 +289,7 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
             </>
           )}
 
-          {/* ── SUCCESS ── */}
+          {/* SUCCESS */}
           {mode === 'success' && (
             <div className="text-center py-4">
               <div className="text-6xl mb-4">🎉</div>
@@ -288,9 +303,7 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
                 </div>
               </div>
               {maGD && (
-                <div className="bg-gray-50 rounded-xl p-3 mb-4 text-xs text-gray-500 font-mono">
-                  Mã GD: {maGD}
-                </div>
+                <div className="bg-gray-50 rounded-xl p-3 mb-4 text-xs text-gray-500 font-mono">Mã GD: {maGD}</div>
               )}
               <button onClick={onClose}
                 className="w-full bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition">
@@ -308,7 +321,6 @@ function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClo
 function ModalLienHe({ nguoiBan, onClose }: { nguoiBan: any; onClose: () => void }) {
   const phone = nguoiBan?.phone;
   const phonePublic = nguoiBan?.phone_visibility !== 'private';
-
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -326,7 +338,6 @@ function ModalLienHe({ nguoiBan, onClose }: { nguoiBan: any; onClose: () => void
               <div className="text-xs text-gray-500">⭐ {nguoiBan?.trust_score || 5.0} điểm uy tín</div>
             </div>
           </div>
-
           {phone && phonePublic ? (
             <>
               <a href={`tel:${phone}`}
@@ -340,13 +351,9 @@ function ModalLienHe({ nguoiBan, onClose }: { nguoiBan: any; onClose: () => void
                 <div><div className="text-xs text-blue-600 font-normal">Zalo</div><div>{phone}</div></div>
               </a>
             </>
-          ) : !phonePublic ? (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center text-gray-400 text-sm">
-              🔒 Người bán đã ẩn thông tin liên hệ
-            </div>
           ) : (
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center text-gray-400 text-sm">
-              📞 Người bán chưa cập nhật SĐT
+              🔒 Người bán chưa cung cấp thông tin liên hệ công khai
             </div>
           )}
           <div className="text-xs text-gray-400 text-center pt-1">Hoặc dùng chat trong app để nhắn tin</div>
@@ -359,7 +366,7 @@ function ModalLienHe({ nguoiBan, onClose }: { nguoiBan: any; onClose: () => void
 // ── Main Page ─────────────────────────────────────────────────
 export default function GaDetailPage() {
   const { id } = useParams();
-  const { openChat } = useChat();
+  const { openChat, currentUser } = useChat();
 
   const [ga, setGa] = useState<any>(null);
   const [aiData, setAiData] = useState<any>(null);
@@ -397,17 +404,28 @@ export default function GaDetailPage() {
 
   const addComment = async () => {
     if (!comment.trim()) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { alert('Vui lòng đăng nhập để bình luận'); return; }
-    const { data } = await supabase.from('comments').insert({ ga_id: id, user_id: user.id, noi_dung: comment }).select('*, profiles(username)').single();
+    if (!currentUser) { alert('Vui lòng đăng nhập để bình luận'); return; }
+    const { data } = await supabase.from('comments').insert({ ga_id: id, user_id: currentUser.id, noi_dung: comment }).select('*, profiles(username)').single();
     if (data) { setComments([data, ...comments]); setComment(''); }
   };
 
   const handleTraGia = async () => {
+    if (!currentUser) { alert('Vui lòng đăng nhập!'); return; }
     if (!ga?.user_id) return;
+    if (currentUser.id === ga.user_id) { alert('Đây là gà của bạn!'); return; }
     setChatLoading(true);
     const anhGa = ga.ga_images?.find((i: any) => i.is_primary)?.url || ga.ga_images?.[0]?.url || '';
-    await openChat(ga.id, ga.user_id, ga.ten, anhGa);
+    const convId = await getOrCreateConv(ga.id, ga.user_id, currentUser.id);
+    if (convId) {
+      await openChat({
+        convId,
+        type: 'product',
+        gaId: ga.id,
+        gaTen: ga.ten,
+        gaAnh: anhGa,
+        doiPhuongId: ga.user_id,
+      });
+    }
     setChatLoading(false);
   };
 
@@ -443,7 +461,7 @@ export default function GaDetailPage() {
 
       {/* MODALS */}
       {showMuaNgay && nguoiBan && (
-        <ModalMuaNgay ga={ga} nguoiBan={nguoiBan} onClose={() => setShowMuaNgay(false)} />
+        <ModalMuaNgay ga={ga} nguoiBan={nguoiBan} currentUser={currentUser} onClose={() => setShowMuaNgay(false)} />
       )}
       {showLienHe && (
         <ModalLienHe nguoiBan={nguoiBan} onClose={() => setShowLienHe(false)} />
