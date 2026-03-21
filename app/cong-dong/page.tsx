@@ -534,10 +534,21 @@ export default function CongDongPage() {
           .cgv-grid { grid-template-columns: 160px 1fr 200px !important; gap: 10px !important; padding: 10px 8px !important; }
         }
         @media (max-width: 768px) {
-          .cgv-grid { grid-template-columns: 120px 1fr 140px !important; gap: 6px !important; padding: 6px 4px !important; }
+          .cgv-grid { grid-template-columns: 110px 1fr 120px !important; gap: 5px !important; padding: 6px 3px !important; }
+          .cgv-left > div, .cgv-right > div { padding: 8px !important; }
+          .cgv-left span, .cgv-right span, .cgv-left div, .cgv-right div { font-size: 11px !important; }
+          .cgv-left img, .cgv-right img { width: 28px !important; height: 28px !important; }
         }
         @media (max-width: 480px) {
-          .cgv-grid { grid-template-columns: 90px 1fr 100px !important; gap: 4px !important; padding: 4px 2px !important; }
+          .cgv-grid { grid-template-columns: 72px 1fr 76px !important; gap: 3px !important; padding: 4px 2px !important; }
+          .cgv-left > div, .cgv-right > div { padding: 5px !important; }
+          .cgv-left span, .cgv-right span, .cgv-left div, .cgv-right div { font-size: 10px !important; line-height: 1.3 !important; }
+          .cgv-left img, .cgv-right img { width: 22px !important; height: 22px !important; }
+        }
+        @media (max-width: 360px) {
+          .cgv-grid { grid-template-columns: 58px 1fr 62px !important; gap: 2px !important; padding: 3px 1px !important; }
+          .cgv-left span, .cgv-right span, .cgv-left div, .cgv-right div { font-size: 9px !important; }
+          .cgv-left img, .cgv-right img { width: 18px !important; height: 18px !important; }
         }
         .cgv-btn-label { display: none; }
         @media (min-width: 600px) { .cgv-btn-label { display: inline; } }
