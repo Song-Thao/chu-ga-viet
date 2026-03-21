@@ -460,7 +460,7 @@ export default function GaDetailPage() {
     <div className="max-w-6xl mx-auto px-4 py-4">
 
       {/* MODALS */}
-      {showMuaNgay && nguoiBan && (
+      {showMuaNgay && nguoiBan && currentUser?.id !== ga.user_id && (
         <ModalMuaNgay ga={ga} nguoiBan={nguoiBan} currentUser={currentUser} onClose={() => setShowMuaNgay(false)} />
       )}
       {showLienHe && (
@@ -509,19 +509,22 @@ export default function GaDetailPage() {
 
           {/* 3 NÚT */}
           <div className="flex gap-3 mb-6 flex-wrap">
-            <button onClick={() => setShowMuaNgay(true)}
-              className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition min-w-[100px]">
-              🛒 Mua ngay
-            </button>
-            <button onClick={handleTraGia} disabled={chatLoading}
-              className="flex-1 border-2 border-[#8B1A1A] text-[#8B1A1A] font-bold py-3 rounded-xl hover:bg-red-50 transition min-w-[100px] disabled:opacity-60">
-              {chatLoading ? '⏳...' : '💬 Trả giá'}
-            </button>
-            <button onClick={() => setShowLienHe(true)}
-              className="border-2 border-gray-300 text-gray-600 font-bold px-4 py-3 rounded-xl hover:bg-gray-50 transition">
-              📞 Liên hệ
-            </button>
-          </div>
+              <button onClick={() => {
+                if (currentUser?.id === ga.user_id) { alert('Đây là gà của bạn!'); return; }
+                setShowMuaNgay(true);
+              }}
+                className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition min-w-[100px]">
+                🛒 Mua ngay
+              </button>
+              <button onClick={handleTraGia} disabled={chatLoading}
+                className="flex-1 border-2 border-[#8B1A1A] text-[#8B1A1A] font-bold py-3 rounded-xl hover:bg-red-50 transition min-w-[100px] disabled:opacity-60">
+                {chatLoading ? '⏳...' : '💬 Trả giá'}
+              </button>
+              <button onClick={() => setShowLienHe(true)}
+                className="border-2 border-gray-300 text-gray-600 font-bold px-4 py-3 rounded-xl hover:bg-gray-50 transition">
+                📞 Liên hệ
+              </button>
+            </div>
 
           {/* AI PHÂN TÍCH */}
           {aiData ? (
@@ -617,10 +620,12 @@ export default function GaDetailPage() {
                 className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-2 rounded-xl hover:bg-gray-50 transition text-sm text-center">
                 Xem hồ sơ
               </Link>
-              <button onClick={handleTraGia} disabled={chatLoading}
-                className="flex-1 bg-[#8B1A1A] text-white font-bold py-2 rounded-xl hover:bg-[#6B0F0F] transition text-sm disabled:opacity-60">
-                💬 Nhắn tin
-              </button>
+              {currentUser?.id !== ga.user_id && (
+                <button onClick={handleTraGia} disabled={chatLoading}
+                  className="flex-1 bg-[#8B1A1A] text-white font-bold py-2 rounded-xl hover:bg-[#6B0F0F] transition text-sm disabled:opacity-60">
+                  💬 Nhắn tin
+                </button>
+              )}
             </div>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-sm">
