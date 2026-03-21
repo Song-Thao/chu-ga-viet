@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useChat } from '@/components/chat/ChatContext';
 
 // ── Helpers ───────────────────────────────────────────────────
 function timeAgo(d: string) {
@@ -19,6 +20,35 @@ function fmt(n: number) {
 const COVER_FALLBACK = 'https://images.unsplash.com/photo-1559715541-5daf0feaf9b9?w=1200&q=80';
 const AVATAR_FALLBACK = (name: string) =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=8B0000&color=fff&size=128`;
+
+// ── Helper: tạo hoặc lấy conversation user-to-user ────────────
+async function getOrCreateUserConv(myId: string, theirId: string): Promise<string | null> {
+  // Tìm conversation type='user' giữa 2 người
+  const { data: existing } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('type', 'user')
+    .or(
+      `and(buyer_id.eq.${myId},seller_id.eq.${theirId}),and(buyer_id.eq.${theirId},seller_id.eq.${myId})`
+    )
+    .maybeSingle();
+
+  if (existing) return existing.id;
+
+  // Tạo mới
+  const { data: created } = await supabase
+    .from('conversations')
+    .insert({
+      type: 'user',
+      ga_id: null,
+      buyer_id: myId,
+      seller_id: theirId,
+    })
+    .select('id')
+    .single();
+
+  return created?.id || null;
+}
 
 // ── Skeleton ──────────────────────────────────────────────────
 function Skeleton() {
@@ -43,10 +73,12 @@ function Skeleton() {
 
 // ── ProfileHeader ─────────────────────────────────────────────
 function ProfileHeader({ profile, isMe, currentUser, onUpdated }: any) {
+  const { openChat } = useChat();
   const [editing, setEditing] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [chatLoading, setChatLoading] = useState(false);
   const [form, setForm] = useState({
     username: profile.username || '',
     bio: profile.bio || '',
@@ -60,9 +92,7 @@ function ProfileHeader({ profile, isMe, currentUser, onUpdated }: any) {
   const avatarRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetchFollowData();
-  }, [profile.id]);
+  useEffect(() => { fetchFollowData(); }, [profile.id]);
 
   async function fetchFollowData() {
     const [{ count: fc }, { count: ing }] = await Promise.all([
@@ -71,7 +101,6 @@ function ProfileHeader({ profile, isMe, currentUser, onUpdated }: any) {
     ]);
     setFollowerCount(fc || 0);
     setFollowingCount(ing || 0);
-
     if (currentUser) {
       const { data } = await supabase.from('follows')
         .select('id').eq('follower_id', currentUser.id).eq('following_id', profile.id).maybeSingle();
@@ -91,6 +120,22 @@ function ProfileHeader({ profile, isMe, currentUser, onUpdated }: any) {
       setFollowing(true);
       setFollowerCount(c => c + 1);
     }
+  }
+
+  // ── Nhắn tin → mở chat popup ──────────────────────────────
+  async function handleNhanTin() {
+    if (!currentUser) { alert('Vui lòng đăng nhập!'); return; }
+    setChatLoading(true);
+    const convId = await getOrCreateUserConv(currentUser.id, profile.id);
+    if (convId) {
+      await openChat({
+        convId,
+        type: 'user',
+        doiPhuongId: profile.id,
+        doiPhuongName: profile.username || 'Người dùng',
+      });
+    }
+    setChatLoading(false);
   }
 
   async function uploadImage(file: File, bucket: string, field: string) {
@@ -119,7 +164,8 @@ function ProfileHeader({ profile, isMe, currentUser, onUpdated }: any) {
     <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-4">
       {/* Cover */}
       <div className="relative h-48 group">
-        <img src={cover} alt="cover" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).src = COVER_FALLBACK; }} />
+        <img src={cover} alt="cover" className="w-full h-full object-cover"
+          onError={e => { (e.target as HTMLImageElement).src = COVER_FALLBACK; }} />
         <div className="absolute inset-0 bg-black/20" />
         {isMe && (
           <button onClick={() => coverRef.current?.click()}
@@ -170,15 +216,18 @@ function ProfileHeader({ profile, isMe, currentUser, onUpdated }: any) {
             {isMe ? (
               editing ? (
                 <>
-                  <button onClick={handleSave} className="bg-[#8B1A1A] text-white text-sm font-bold px-4 py-2 rounded-full hover:bg-[#6B0F0F] transition">
+                  <button onClick={handleSave}
+                    className="bg-[#8B1A1A] text-white text-sm font-bold px-4 py-2 rounded-full hover:bg-[#6B0F0F] transition">
                     💾 Lưu
                   </button>
-                  <button onClick={() => setEditing(false)} className="border border-gray-300 text-gray-600 text-sm font-bold px-4 py-2 rounded-full hover:bg-gray-50 transition">
+                  <button onClick={() => setEditing(false)}
+                    className="border border-gray-300 text-gray-600 text-sm font-bold px-4 py-2 rounded-full hover:bg-gray-50 transition">
                     Hủy
                   </button>
                 </>
               ) : (
-                <button onClick={() => setEditing(true)} className="border-2 border-gray-300 text-gray-700 text-sm font-bold px-4 py-2 rounded-full hover:border-gray-400 transition flex items-center gap-1.5">
+                <button onClick={() => setEditing(true)}
+                  className="border-2 border-gray-300 text-gray-700 text-sm font-bold px-4 py-2 rounded-full hover:border-gray-400 transition flex items-center gap-1.5">
                   ✏️ Chỉnh sửa
                 </button>
               )
@@ -188,17 +237,17 @@ function ProfileHeader({ profile, isMe, currentUser, onUpdated }: any) {
                   className={`text-sm font-bold px-4 py-2 rounded-full transition flex items-center gap-1.5 ${following ? 'border-2 border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-[#8B1A1A] text-white hover:bg-[#6B0F0F]'}`}>
                   {following ? '✓ Đang theo dõi' : '+ Theo dõi'}
                 </button>
-                <Link href={`/tin-nhan`}>
-                  <button className="border-2 border-gray-300 text-gray-700 text-sm font-bold px-4 py-2 rounded-full hover:bg-gray-50 transition">
-                    💬 Nhắn tin
-                  </button>
-                </Link>
+                {/* ── Nút Nhắn tin → mở chat popup ── */}
+                <button onClick={handleNhanTin} disabled={chatLoading}
+                  className="border-2 border-gray-300 text-gray-700 text-sm font-bold px-4 py-2 rounded-full hover:bg-gray-50 transition disabled:opacity-60">
+                  {chatLoading ? '⏳...' : '💬 Nhắn tin'}
+                </button>
               </>
             )}
           </div>
         </div>
 
-        {/* Bio */}
+        {/* Bio / Edit form */}
         {editing ? (
           <div className="space-y-3 mb-4 bg-gray-50 rounded-xl p-4">
             <div>
@@ -211,16 +260,19 @@ function ProfileHeader({ profile, isMe, currentUser, onUpdated }: any) {
               <div>
                 <label className="text-xs font-bold text-gray-500 block mb-1">Khu vực</label>
                 <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })}
-                  placeholder="TP.HCM, Cà Mau..." className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+                  placeholder="TP.HCM, Cà Mau..."
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-500 block mb-1">Số điện thoại</label>
                 <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
-                  placeholder="0909..." className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+                  placeholder="0909..."
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-500 block mb-1">Kinh nghiệm (năm)</label>
-                <input type="number" value={form.experience_years} onChange={e => setForm({ ...form, experience_years: Number(e.target.value) })}
+                <input type="number" value={form.experience_years}
+                  onChange={e => setForm({ ...form, experience_years: Number(e.target.value) })}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
               </div>
               <div>
@@ -246,9 +298,7 @@ function ProfileHeader({ profile, isMe, currentUser, onUpdated }: any) {
             {profile.bio && <p className="text-sm text-gray-600 mb-3 leading-relaxed">{profile.bio}</p>}
             <div className="flex flex-wrap gap-3 text-xs text-gray-500 mb-4">
               {profile.experience_years > 0 && <span>🐓 {profile.experience_years} năm kinh nghiệm</span>}
-              {profile.phone && (profile.phone_visibility === 'public' || isMe) && (
-                <span>📞 {profile.phone}</span>
-              )}
+              {profile.phone && (profile.phone_visibility === 'public' || isMe) && <span>📞 {profile.phone}</span>}
               <span>📅 Tham gia {new Date(profile.created_at || Date.now()).toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' })}</span>
             </div>
           </>
@@ -257,10 +307,10 @@ function ProfileHeader({ profile, isMe, currentUser, onUpdated }: any) {
         {/* Stats */}
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: 'Theo dõi', value: fmt(followerCount), icon: '👥' },
-            { label: 'Đang theo', value: fmt(followingCount), icon: '➡️' },
-            { label: 'Uy tín', value: `⭐ ${profile.trust_score || 5}`, icon: '' },
-            { label: 'Đang bán', value: '—', icon: '🐓', id: 'ga_count' },
+            { label: 'Theo dõi', value: fmt(followerCount) },
+            { label: 'Đang theo', value: fmt(followingCount) },
+            { label: 'Uy tín', value: `⭐ ${profile.trust_score || 5}` },
+            { label: 'Đang bán', value: '—' },
           ].map(s => (
             <div key={s.label} className="text-center p-2.5 bg-gray-50 rounded-xl">
               <div className="font-black text-base text-[#8B1A1A]">{s.value}</div>
@@ -284,13 +334,11 @@ function ProfileHeader({ profile, isMe, currentUser, onUpdated }: any) {
 function PostCard({ post }: { post: any }) {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(post.like_count ?? post.likes ?? 0);
-  const [showComments, setShowComments] = useState(false);
   const name = post.profiles?.username || 'Người dùng';
   const avatar = post.profiles?.avatar_url || AVATAR_FALLBACK(name);
 
   return (
     <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-3">
-      {/* Header */}
       <div className="flex items-center gap-3 p-4 pb-3">
         <img src={avatar} alt={name} className="w-10 h-10 rounded-full object-cover" />
         <div>
@@ -298,28 +346,15 @@ function PostCard({ post }: { post: any }) {
           <div className="text-xs text-gray-400">{timeAgo(post.created_at)}</div>
         </div>
       </div>
-
-      {/* Content */}
-      <div className="px-4 pb-3 text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-        {post.noi_dung}
-      </div>
-
-      {/* Image */}
-      {post.image_url && (
-        <img src={post.image_url} alt="" className="w-full max-h-96 object-cover" />
-      )}
-
-      {/* Stats */}
+      <div className="px-4 pb-3 text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{post.noi_dung}</div>
+      {post.image_url && <img src={post.image_url} alt="" className="w-full max-h-96 object-cover" />}
       <div className="px-4 py-2 flex gap-4 text-xs text-gray-500 border-b border-gray-100">
         <span>{liked ? '❤️' : '🤍'} {fmt(likeCount)} lượt thích</span>
         <span>💬 {fmt(post.comment_count ?? 0)} bình luận</span>
       </div>
-
-      {/* Actions */}
       <div className="flex px-2 py-1">
         {[
           { icon: liked ? '❤️' : '👍', label: 'Thích', action: () => { setLiked(l => !l); setLikeCount((c: number) => c + (liked ? -1 : 1)); } },
-          { icon: '💬', label: 'Bình luận', action: () => setShowComments(s => !s) },
           { icon: '🔗', label: 'Chia sẻ', action: () => navigator.clipboard?.writeText(window.location.href) },
         ].map(btn => (
           <button key={btn.label} onClick={btn.action}
@@ -385,16 +420,10 @@ export default function HoSoPage() {
       profileId = user.id;
     }
 
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', profileId)
-      .single();
-
+    const { data: profileData } = await supabase.from('profiles').select('*').eq('id', profileId).single();
     if (!profileData) { setLoading(false); return; }
     setProfile(profileData);
 
-    // Kiểm tra private
     const isOwner = user?.id === profileId;
     if (profileData.profile_visibility === 'private' && !isOwner) {
       setIsPrivate(true);
@@ -402,7 +431,6 @@ export default function HoSoPage() {
       return;
     }
 
-    // Load data song song
     const [postsRes, gaActiveRes, gaSoldRes] = await Promise.all([
       supabase.from('posts').select('id, noi_dung, image_url, like_count, likes, comment_count, youtube_url, created_at, profiles(username, avatar_url)')
         .eq('user_id', profileId).eq('status', 'active').order('created_at', { ascending: false }).limit(20),
@@ -450,13 +478,10 @@ export default function HoSoPage() {
     <div className="bg-gray-100 min-h-screen">
       <div className="max-w-3xl mx-auto px-4 py-4">
         <ProfileHeader
-          profile={profile}
-          isMe={isMe}
-          currentUser={currentUser}
+          profile={profile} isMe={isMe} currentUser={currentUser}
           onUpdated={(updates: any) => setProfile((p: any) => ({ ...p, ...updates }))}
         />
 
-        {/* TABS */}
         <div className="bg-white rounded-xl shadow-sm p-1 mb-4 flex gap-1 overflow-x-auto">
           {TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
@@ -466,61 +491,35 @@ export default function HoSoPage() {
           ))}
         </div>
 
-        {/* TAB: Bài viết */}
         {tab === 'bai-viet' && (
           posts.length === 0 ? (
             <div className="bg-white rounded-xl p-12 text-center shadow-sm text-gray-400">
               <div className="text-5xl mb-3">📝</div>
               <div className="font-semibold">Chưa có bài viết nào</div>
-              {isMe && (
-                <Link href="/cong-dong">
-                  <button className="mt-4 bg-[#8B1A1A] text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-[#6B0F0F] transition">
-                    Đăng bài ngay →
-                  </button>
-                </Link>
-              )}
+              {isMe && <Link href="/cong-dong"><button className="mt-4 bg-[#8B1A1A] text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-[#6B0F0F] transition">Đăng bài ngay →</button></Link>}
             </div>
-          ) : (
-            <div>{posts.map(p => <PostCard key={p.id} post={p} />)}</div>
-          )
+          ) : <div>{posts.map(p => <PostCard key={p.id} post={p} />)}</div>
         )}
 
-        {/* TAB: Đang bán */}
         {tab === 'dang' && (
           gaList.length === 0 ? (
             <div className="bg-white rounded-xl p-12 text-center shadow-sm text-gray-400">
               <div className="text-5xl mb-3">🐓</div>
               <div className="font-semibold">Chưa có gà đang bán</div>
-              {isMe && (
-                <Link href="/dang-ga">
-                  <button className="mt-4 bg-[#8B1A1A] text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-[#6B0F0F] transition">
-                    Đăng bán gà →
-                  </button>
-                </Link>
-              )}
+              {isMe && <Link href="/dang-ga"><button className="mt-4 bg-[#8B1A1A] text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-[#6B0F0F] transition">Đăng bán gà →</button></Link>}
             </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {gaList.map((ga, i) => <GaCard key={ga.id} ga={ga} idx={i} />)}
-            </div>
-          )
+          ) : <div className="grid grid-cols-2 md:grid-cols-3 gap-4">{gaList.map((ga, i) => <GaCard key={ga.id} ga={ga} idx={i} />)}</div>
         )}
 
-        {/* TAB: Đã bán */}
         {tab === 'ban' && (
           gaDaBan.length === 0 ? (
             <div className="bg-white rounded-xl p-12 text-center shadow-sm text-gray-400">
               <div className="text-5xl mb-3">✅</div>
               <div className="font-semibold">Chưa có gà đã bán</div>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {gaDaBan.map((ga, i) => <GaCard key={ga.id} ga={ga} idx={i} />)}
-            </div>
-          )
+          ) : <div className="grid grid-cols-2 md:grid-cols-3 gap-4">{gaDaBan.map((ga, i) => <GaCard key={ga.id} ga={ga} idx={i} />)}</div>
         )}
 
-        {/* TAB: Đánh giá */}
         {tab === 'danh-gia' && (
           <div className="bg-white rounded-xl p-12 text-center shadow-sm text-gray-400">
             <div className="text-5xl mb-3">⭐</div>
@@ -529,7 +528,6 @@ export default function HoSoPage() {
           </div>
         )}
 
-        {/* Nút đăng gà (nếu là mình) */}
         {isMe && (
           <div className="mt-4">
             <Link href="/dang-ga">
