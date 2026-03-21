@@ -3,9 +3,12 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useChatPopup } from '@/components/chat/ChatPopupContext';
 
 export default function GaDetailPage() {
   const { id } = useParams();
+  const { openChat } = useChatPopup();
+
   const [ga, setGa] = useState<any>(null);
   const [aiData, setAiData] = useState<any>(null);
   const [nguoiBan, setNguoiBan] = useState<any>(null);
@@ -13,6 +16,7 @@ export default function GaDetailPage() {
   const [anhChinh, setAnhChinh] = useState(0);
   const [comment, setComment] = useState('');
   const [comments, setComments] = useState<any[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
 
   useEffect(() => {
     if (id) fetchGa();
@@ -20,7 +24,6 @@ export default function GaDetailPage() {
 
   const fetchGa = async () => {
     try {
-      // Lấy thông tin gà + ảnh + AI
       const { data: gaData } = await supabase
         .from('ga')
         .select(`
@@ -35,7 +38,6 @@ export default function GaDetailPage() {
         setGa(gaData);
         setAiData(gaData.ai_analysis?.[0] || null);
 
-        // Lấy thông tin người bán
         if (gaData.user_id) {
           const { data: profile } = await supabase
             .from('profiles')
@@ -45,7 +47,6 @@ export default function GaDetailPage() {
           setNguoiBan(profile);
         }
 
-        // Lấy bình luận
         const { data: cmts } = await supabase
           .from('comments')
           .select('*, profiles(username)')
@@ -53,7 +54,6 @@ export default function GaDetailPage() {
           .order('created_at', { ascending: false });
         setComments(cmts || []);
 
-        // Tăng view count
         await supabase
           .from('ga')
           .update({ view_count: (gaData.view_count || 0) + 1 })
@@ -69,22 +69,22 @@ export default function GaDetailPage() {
   const addComment = async () => {
     if (!comment.trim()) return;
     const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      alert('Vui lòng đăng nhập để bình luận');
-      return;
-    }
-
+    if (!user) { alert('Vui lòng đăng nhập để bình luận'); return; }
     const { data } = await supabase
       .from('comments')
       .insert({ ga_id: id, user_id: user.id, noi_dung: comment })
       .select('*, profiles(username)')
       .single();
+    if (data) { setComments([data, ...comments]); setComment(''); }
+  };
 
-    if (data) {
-      setComments([data, ...comments]);
-      setComment('');
-    }
+  // ── Mở chat popup ─────────────────────────────────────────
+  const handleOpenChat = async (message?: string) => {
+    if (!ga?.user_id) return;
+    setChatLoading(true);
+    const anhGa = ga.ga_images?.find((i: any) => i.is_primary)?.url || ga.ga_images?.[0]?.url || '';
+    await openChat(ga.id, ga.user_id, ga.ten, anhGa);
+    setChatLoading(false);
   };
 
   const getDiemMau = (d: number) => d >= 8 ? 'text-green-600' : d >= 6.5 ? 'text-yellow-600' : 'text-red-500';
@@ -133,12 +133,10 @@ export default function GaDetailPage() {
         {/* ẢNH */}
         <div>
           {anhHienTai ? (
-            <img src={anhHienTai} alt={ga.ten}
-              className="w-full h-72 object-cover rounded-xl mb-3" />
+            <img src={anhHienTai} alt={ga.ten} className="w-full h-72 object-cover rounded-xl mb-3" />
           ) : (
             <div className="bg-orange-800 rounded-xl h-72 flex items-center justify-center text-8xl mb-3">🐓</div>
           )}
-
           {anhList.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {anhList.map((anh: any, i: number) => (
@@ -167,21 +165,30 @@ export default function GaDetailPage() {
             {ga.view_count > 0 && <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">👁 {ga.view_count} lượt xem</span>}
           </div>
 
-          {/* BUTTONS */}
-<div className="flex gap-3 mb-6 flex-wrap">
-  <Link href={`/chat/${ga.id}`}
-    className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition text-center min-w-[100px]">
-    🛒 Mua ngay
-  </Link>
-  <Link href={`/chat/${ga.id}`}
-    className="flex-1 border-2 border-[#8B1A1A] text-[#8B1A1A] font-bold py-3 rounded-xl hover:bg-red-50 transition text-center min-w-[100px]">
-    💬 Trả giá
-  </Link>
-  <Link href={`/chat/${ga.id}`}
-    className="border-2 border-gray-300 text-gray-600 font-bold px-4 py-3 rounded-xl hover:bg-gray-50 transition">
-    📞 Liên hệ
-  </Link>
-</div>
+          {/* ── BUTTONS CHAT — KHÔNG CHUYỂN TRANG ── */}
+          <div className="flex gap-3 mb-6 flex-wrap">
+            <button
+              onClick={() => handleOpenChat('Tôi muốn mua con gà này!')}
+              disabled={chatLoading}
+              className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition text-center min-w-[100px] disabled:opacity-60"
+            >
+              {chatLoading ? '⏳...' : '🛒 Mua ngay'}
+            </button>
+            <button
+              onClick={() => handleOpenChat('Giá có thể thương lượng không bạn?')}
+              disabled={chatLoading}
+              className="flex-1 border-2 border-[#8B1A1A] text-[#8B1A1A] font-bold py-3 rounded-xl hover:bg-red-50 transition text-center min-w-[100px] disabled:opacity-60"
+            >
+              💬 Trả giá
+            </button>
+            <button
+              onClick={() => handleOpenChat()}
+              disabled={chatLoading}
+              className="border-2 border-gray-300 text-gray-600 font-bold px-4 py-3 rounded-xl hover:bg-gray-50 transition disabled:opacity-60"
+            >
+              📞 Liên hệ
+            </button>
+          </div>
 
           {/* AI PHÂN TÍCH */}
           {aiData ? (
@@ -192,11 +199,9 @@ export default function GaDetailPage() {
                   {aiData.total_score}/10
                 </div>
               </div>
-
               {aiData.nhan_xet && (
                 <p className="text-sm text-gray-600 mb-3 leading-relaxed">{aiData.nhan_xet}</p>
               )}
-
               {(aiData.mat_score || aiData.chan_score || aiData.vay_score || aiData.dau_score) && (
                 <div className="grid grid-cols-2 gap-2">
                   {[
@@ -211,7 +216,7 @@ export default function GaDetailPage() {
                         <span className={`text-xs font-black ${getDiemMau(item.score)}`}>{item.score}/10</span>
                       </div>
                       <div className="h-1.5 bg-gray-200 rounded-full mt-1">
-                        <div className="h-1.5 bg-[#8B1A1A] rounded-full" style={{width: getBarWidth(item.score)}}></div>
+                        <div className="h-1.5 bg-[#8B1A1A] rounded-full" style={{ width: getBarWidth(item.score) }}></div>
                       </div>
                     </div>
                   ))}
@@ -230,7 +235,6 @@ export default function GaDetailPage() {
 
         {/* MÔ TẢ + BÌNH LUẬN */}
         <div className="md:col-span-2 space-y-4">
-
           {ga.mo_ta && (
             <div className="bg-white rounded-xl p-4 shadow-sm">
               <h3 className="font-black text-gray-800 mb-3">📋 Mô tả</h3>
@@ -238,7 +242,6 @@ export default function GaDetailPage() {
             </div>
           )}
 
-          {/* BÌNH LUẬN */}
           <div className="bg-white rounded-xl p-4 shadow-sm">
             <h3 className="font-black text-gray-800 mb-3">💬 Bình luận ({comments.length})</h3>
             <div className="flex gap-2 mb-4">
@@ -251,7 +254,6 @@ export default function GaDetailPage() {
                 Gửi
               </button>
             </div>
-
             {comments.length === 0 ? (
               <div className="text-center py-6 text-gray-400 text-sm">Chưa có bình luận. Hãy là người đầu tiên!</div>
             ) : (
@@ -263,12 +265,8 @@ export default function GaDetailPage() {
                     </div>
                     <div className="flex-1">
                       <div className="flex gap-2 items-center">
-                        <span className="font-semibold text-sm text-gray-800">
-                          {c.profiles?.username || 'Người dùng'}
-                        </span>
-                        <span className="text-xs text-gray-400">
-                          {new Date(c.created_at).toLocaleDateString('vi-VN')}
-                        </span>
+                        <span className="font-semibold text-sm text-gray-800">{c.profiles?.username || 'Người dùng'}</span>
+                        <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleDateString('vi-VN')}</span>
                       </div>
                       <div className="text-sm text-gray-600 mt-0.5">{c.noi_dung}</div>
                     </div>
@@ -288,17 +286,23 @@ export default function GaDetailPage() {
                 {(nguoiBan?.username || 'U')[0].toUpperCase()}
               </div>
               <div>
-                <div className="font-bold text-gray-800">
-                  {nguoiBan?.username || 'Người bán'}
-                </div>
-                <div className="text-xs text-gray-500">
-                  ⭐ {nguoiBan?.trust_score || 5.0}
-                </div>
+                <div className="font-bold text-gray-800">{nguoiBan?.username || 'Người bán'}</div>
+                <div className="text-xs text-gray-500">⭐ {nguoiBan?.trust_score || 5.0}</div>
               </div>
             </div>
-            <button className="w-full border-2 border-[#8B1A1A] text-[#8B1A1A] font-bold py-2 rounded-xl hover:bg-red-50 transition text-sm">
-              Xem hồ sơ
-            </button>
+            <div className="flex gap-2">
+              <Link href={`/ho-so/${ga.user_id}`}
+                className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-2 rounded-xl hover:bg-gray-50 transition text-sm text-center">
+                Xem hồ sơ
+              </Link>
+              <button
+                onClick={() => handleOpenChat()}
+                disabled={chatLoading}
+                className="flex-1 bg-[#8B1A1A] text-white font-bold py-2 rounded-xl hover:bg-[#6B0F0F] transition text-sm disabled:opacity-60"
+              >
+                💬 Nhắn tin
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl p-4 shadow-sm">
