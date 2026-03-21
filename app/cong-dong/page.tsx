@@ -531,13 +531,16 @@ export default function CongDongPage() {
       {/* CSS RESPONSIVE */}
       <style>{`
         @media (max-width: 1024px) {
-          .cgv-grid { grid-template-columns: 200px 1fr !important; }
-          .cgv-right { display: none !important; }
+          .cgv-grid { grid-template-columns: 160px 1fr 200px !important; gap: 10px !important; padding: 10px 8px !important; }
         }
         @media (max-width: 768px) {
-          .cgv-grid { grid-template-columns: 1fr !important; padding: 8px !important; }
-          .cgv-left { display: none !important; }
+          .cgv-grid { grid-template-columns: 120px 1fr 140px !important; gap: 6px !important; padding: 6px 4px !important; }
         }
+        @media (max-width: 480px) {
+          .cgv-grid { grid-template-columns: 90px 1fr 100px !important; gap: 4px !important; padding: 4px 2px !important; }
+        }
+        .cgv-btn-label { display: none; }
+        @media (min-width: 600px) { .cgv-btn-label { display: inline; } }
       `}</style>
     </div>
   );
