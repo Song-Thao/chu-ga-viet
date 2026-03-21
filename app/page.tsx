@@ -105,34 +105,39 @@ function HoverVideoSidebar({ finalId, thumb, title, views }: { finalId: string; 
 
   return (
     <div style={{ marginBottom: 12 }} onMouseEnter={() => setHovering(true)} onMouseLeave={() => { setHovering(false); setMuted(true); }}>
-      <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#000', paddingBottom: '56.25%', cursor: 'pointer' }}>
+      <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#000', paddingBottom: '56.25%' }}>
         {hovering ? (
           <>
             <iframe
-              src={`https://www.youtube.com/embed/${finalId}?autoplay=1&mute=${muted ? 1 : 0}&controls=0&loop=1&playlist=${finalId}`}
+              key={`sidebar-${finalId}-${muted}`}
+              src={`https://www.youtube.com/embed/${finalId}?autoplay=1&mute=${muted ? 1 : 0}&controls=1&loop=1&playlist=${finalId}&rel=0`}
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
-              allow="autoplay; encrypted-media"
-              key={`${finalId}-${muted}`}
+              allow="autoplay; encrypted-media; fullscreen"
+              allowFullScreen
             />
-            {/* Nút mute toggle */}
+            {/* Nút bật tiếng đặt ngoài iframe để luôn click được */}
             <button
-              onClick={e => { e.stopPropagation(); setMuted(m => !m); }}
+              onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setMuted(m => !m); }}
               style={{
-                position: 'absolute', bottom: 8, left: 8, zIndex: 10,
-                background: 'rgba(0,0,0,0.7)', border: 'none', borderRadius: 6,
-                color: '#fff', fontSize: 13, padding: '3px 8px', cursor: 'pointer',
+                position: 'absolute', top: 8, right: 8, zIndex: 20,
+                background: muted ? 'rgba(200,0,0,0.85)' : 'rgba(0,150,0,0.85)',
+                border: 'none', borderRadius: 6, color: '#fff',
+                fontSize: 12, fontWeight: 700, padding: '4px 10px', cursor: 'pointer',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
               }}
-              title={muted ? 'Bật tiếng' : 'Tắt tiếng'}
             >
-              {muted ? '🔇 Bật tiếng' : '🔊 Tắt tiếng'}
+              {muted ? '🔇 Bật tiếng' : '🔊 Đang có tiếng'}
             </button>
           </>
         ) : (
           <>
-            <img src={thumb || `https://img.youtube.com/vi/${finalId}/mqdefault.jpg`}
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img
+              src={thumb || `https://img.youtube.com/vi/${finalId}/mqdefault.jpg`}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+              alt={title}
+            />
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16 }}>▶</div>
+              <div style={{ background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 18 }}>▶</div>
             </div>
             <div style={{ position: 'absolute', bottom: 6, left: 8, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 10, padding: '2px 6px', borderRadius: 4 }}>
               🖱️ Rê để xem trước
@@ -165,27 +170,32 @@ function HoverVideoPost({ ytId }: { ytId: string }) {
       {hovering ? (
         <>
           <iframe
-            src={`https://www.youtube.com/embed/${ytId}?autoplay=1&mute=${muted ? 1 : 0}&controls=1&loop=1&playlist=${ytId}`}
+            key={`post-${ytId}-${muted}`}
+            src={`https://www.youtube.com/embed/${ytId}?autoplay=1&mute=${muted ? 1 : 0}&controls=1&loop=1&playlist=${ytId}&rel=0`}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
-            allow="autoplay; encrypted-media; picture-in-picture"
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
             allowFullScreen
-            key={`${ytId}-${muted}`}
           />
           <button
-            onClick={e => { e.stopPropagation(); setMuted(m => !m); }}
+            onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setMuted(m => !m); }}
             style={{
-              position: 'absolute', bottom: 12, left: 12, zIndex: 10,
-              background: 'rgba(0,0,0,0.7)', border: 'none', borderRadius: 6,
-              color: '#fff', fontSize: 13, padding: '4px 10px', cursor: 'pointer',
+              position: 'absolute', top: 10, right: 10, zIndex: 20,
+              background: muted ? 'rgba(200,0,0,0.85)' : 'rgba(0,150,0,0.85)',
+              border: 'none', borderRadius: 6, color: '#fff',
+              fontSize: 13, fontWeight: 700, padding: '5px 12px', cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
             }}
           >
-            {muted ? '🔇 Bật tiếng' : '🔊 Tắt tiếng'}
+            {muted ? '🔇 Bật tiếng' : '🔊 Đang có tiếng'}
           </button>
         </>
       ) : (
         <>
-          <img src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img
+            src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            alt="video thumbnail"
+          />
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ background: 'rgba(0,0,0,0.65)', borderRadius: '50%', width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 24 }}>▶</div>
           </div>
@@ -245,24 +255,14 @@ export default function CongDongPage() {
     const { data: vidData } = await supabase.from('videos').select('*').limit(5);
     if (vidData) setFeaturedVideos(vidData);
 
-    // Top sự kê — lấy từ profiles có role đặc biệt hoặc trust_score cao
+    // Top sự kê — lấy từ profiles, dùng username (không có full_name)
     const { data: suKeData } = await supabase
       .from('profiles')
-      .select('id, full_name, username, avatar_url, trust_score, role')
-      .or('role.eq.su_ke,role.eq.expert,trust_score.gte.80')
+      .select('id, username, avatar_url, trust_score, role')
+      .eq('status', 'active')
       .order('trust_score', { ascending: false })
       .limit(5);
-    if (suKeData && suKeData.length > 0) {
-      setTopSuKe(suKeData);
-    } else {
-      // Fallback: lấy 3 user có trust_score cao nhất
-      const { data: fallback } = await supabase
-        .from('profiles')
-        .select('id, full_name, username, avatar_url, trust_score')
-        .order('trust_score', { ascending: false })
-        .limit(3);
-      if (fallback) setTopSuKe(fallback);
-    }
+    if (suKeData) setTopSuKe(suKeData);
 
     // Banners từ Supabase (bảng banners)
     const { data: bannerData } = await supabase.from('banners').select('*').order('vi_tri');
@@ -446,7 +446,7 @@ export default function CongDongPage() {
             {topSuKe.length === 0 ? (
               <p style={{ color: '#aaa', fontSize: 13 }}>Đang tải...</p>
             ) : topSuKe.map((sk, i) => {
-              const displayName = sk.full_name || sk.username || 'Người dùng';
+              const displayName = sk.username || 'Người dùng';
               const avatar = sk.avatar_url
                 || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=8B0000&color=fff`;
               return (
