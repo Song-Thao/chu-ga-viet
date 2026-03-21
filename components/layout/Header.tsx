@@ -1,616 +1,302 @@
 'use client';
-import { useState, useEffect } from 'react';
+
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { Search, Bell, MessageCircle, User, Menu, LogOut } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useChatPopup } from '@/components/chat/ChatPopupContext';
+import { useRouter } from 'next/navigation';
 
-export const dynamic = 'force-dynamic';
+// Helper: mở floating chat window qua custom event
+function openFloatingChat(detail: {
+  convId: string;
+  gaId: string;
+  gaTen: string;
+  gaAnh: string;
+  doiPhuongId: string;
+}) {
+  window.dispatchEvent(new CustomEvent('cgv-open-chat', { detail }));
+}
 
-// ── Modal Mua Ngay ────────────────────────────────────────────
-function ModalMuaNgay({ ga, nguoiBan, onClose }: { ga: any; nguoiBan: any; onClose: () => void }) {
-  const { openChat } = useChatPopup();
-  const [mode, setMode] = useState<'choose' | 'qua-san' | 'tu-mua' | 'success'>('choose');
-  const [loading, setLoading] = useState(false);
-  const [config, setConfig] = useState<any>(null);
-  const [maGD, setMaGD] = useState('');
+export default function Header() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotif, setShowNotif] = useState(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const router = useRouter();
+
+  const notifRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    supabase.from('config').select('*').single().then(({ data }) => {
-      if (data) setConfig(data);
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+      if (data.user) setupRealtime(data.user.id);
     });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user || null);
+      if (session?.user) setupRealtime(session.user.id);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
-  const giaGa = parseInt(ga.gia);
-  const cocPercent = config?.coc_percent || 10;
-  const phiPercent = config?.phi_percent || 1;
-  const tiencoc = Math.round(giaGa * cocPercent / 100);
-  const phiGD = Math.round(giaGa * phiPercent / 100);
-  const tkTen = config?.tk_ten || 'NGUYEN CHI VUNG';
-  const tkSo = config?.tk_so || '7207205286010';
-  const tkBin = config?.tk_bin || '970405';
-  const tkNganHang = config?.tk_ngan_hang || 'VietinBank';
-  const zalo = config?.zalo || '0917161003';
-
-  async function handleDatCoc() {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { alert('Vui lòng đăng nhập!'); setLoading(false); return; }
-    if (user.id === ga.user_id) { alert('Bạn không thể mua gà của chính mình!'); setLoading(false); return; }
-
-    const ma = `CGV-${ga.id}-${Date.now()}`;
-    setMaGD(ma);
-
-    const { error } = await supabase.from('orders').insert({
-      ga_id: ga.id,
-      buyer_id: user.id,
-      seller_id: ga.user_id,
-      gia: ga.gia,
-      tien_coc: tiencoc,
-      ma_giao_dich: ma,
-      status: 'pending_deposit',
-    });
-
-    if (!error) {
-      // Mở chat thông báo cho người bán
-      const anhGa = ga.ga_images?.find((i: any) => i.is_primary)?.url || ga.ga_images?.[0]?.url || '';
-      await openChat(ga.id, ga.user_id, ga.ten, anhGa);
-      setMode('success');
-    } else {
-      alert('Lỗi: ' + error.message);
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      if (notifRef.current && !notifRef.current.contains(target)) setShowNotif(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(target)) setUserMenuOpen(false);
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(target)) setMenuOpen(false);
     }
-    setLoading(false);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setShowNotif(false); setUserMenuOpen(false); setMenuOpen(false); }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const playSound = () => {
+    try {
+      if (!audioCtxRef.current)
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = audioCtxRef.current;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.3);
+    } catch {}
+  };
+
+  const setupRealtime = (userId: string) => {
+    supabase.channel(`notifications-${userId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
+        const msg = payload.new as any;
+        if (msg.sender_id === userId) return;
+
+        const { data: conv } = await supabase
+          .from('conversations')
+          .select('id, ga_id, seller_id, buyer_id, ga(ten, ga_images(url, is_primary))')
+          .eq('id', msg.conversation_id)
+          .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+          .maybeSingle();
+
+        if (!conv) return;
+        playSound();
+
+        const gaData = (conv as any).ga;
+        const gaAnh = gaData?.ga_images?.find((i: any) => i.is_primary)?.url || gaData?.ga_images?.[0]?.url || '';
+
+        setNotifications(prev => [{
+          id: msg.id,
+          conv_id: conv.id,
+          ga_id: conv.ga_id,
+          ga_ten: gaData?.ten || 'Gà',
+          ga_anh: gaAnh,
+          seller_id: (conv as any).seller_id,
+          buyer_id: (conv as any).buyer_id,
+          noi_dung: msg.noi_dung,
+          time: new Date(),
+          read: false,
+        }, ...prev.slice(0, 9)]);
+
+        setUnreadCount(prev => prev + 1);
+      }).subscribe();
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUserMenuOpen(false);
+    router.push('/');
+    router.refresh();
+  };
+
+  const markAllRead = () => {
+    setUnreadCount(0);
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  // Click thông báo → mở floating chat window
+  const handleNotifClick = (n: any) => {
+    setShowNotif(false);
+    // Xóa thông báo này (đọc xong không lưu)
+    setNotifications(prev => prev.filter(x => x.id !== n.id));
+    const doiPhuongId = n.seller_id === user?.id ? n.buyer_id : n.seller_id;
+    openFloatingChat({
+      convId: n.conv_id,
+      gaId: n.ga_id,
+      gaTen: n.ga_ten,
+      gaAnh: n.ga_anh || '',
+      doiPhuongId,
+    });
+  };
+
+  function toggleNotif() {
+    const next = !showNotif;
+    setShowNotif(next);
+    setUserMenuOpen(false);
+    if (next) markAllRead();
   }
 
-  const qrUrl = `https://img.vietqr.io/image/${tkBin}-${tkSo}-compact2.png?amount=${tiencoc}&addInfo=${encodeURIComponent(`COC ${ga.id}`)}&accountName=${encodeURIComponent(tkTen)}`;
+  function toggleUserMenu() {
+    setUserMenuOpen(prev => !prev);
+    setShowNotif(false);
+  }
+
+  const userName = user?.user_metadata?.username || user?.email?.split('@')[0] || 'Tài khoản';
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <header className="bg-[#8B1A1A] text-white sticky top-0 z-50 shadow-lg">
+      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
 
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-white z-10">
-          <div className="flex items-center gap-2">
-            {mode !== 'choose' && (
-              <button onClick={() => setMode('choose')} className="text-gray-400 hover:text-gray-600 mr-1">←</button>
-            )}
-            <h2 className="font-black text-lg">
-              {mode === 'choose' && '🛒 Mua gà này'}
-              {mode === 'qua-san' && '🔒 Mua qua sàn (An toàn)'}
-              {mode === 'tu-mua' && '⚠️ Tự liên hệ mua riêng'}
-              {mode === 'success' && '✅ Đặt cọc thành công!'}
-            </h2>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 text-gray-500">✕</button>
+        <Link href="/" className="flex items-center gap-2 font-bold text-xl whitespace-nowrap">
+          🐓 <span className="hidden sm:block">Chủ Gà Việt</span>
+        </Link>
+
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <input type="text" placeholder="Tìm gà theo tên, loại, khu vực..."
+            className="w-full pl-9 pr-4 py-2 rounded-full text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400" />
         </div>
 
-        <div className="p-5">
+        <nav className="hidden md:flex items-center gap-4 text-sm font-medium">
+          <Link href="/cho" className="hover:text-yellow-300 transition">Chợ</Link>
+          <Link href="/thu-vien" className="hover:text-yellow-300 transition">Thư viện</Link>
+          <Link href="/cong-dong" className="hover:text-yellow-300 transition">Cộng đồng</Link>
+        </nav>
 
-          {/* ── BƯỚC 1: CHỌN HÌNH THỨC ── */}
-          {mode === 'choose' && (
+        <div className="flex items-center gap-3">
+          <Link href="/ai-phan-tich"
+            className="bg-yellow-400 text-black px-3 py-1 rounded-full text-xs font-bold hover:bg-yellow-300 transition hidden sm:block">
+            AI Phân Tích
+          </Link>
+
+          {user ? (
             <>
-              {/* Thông tin gà */}
-              <div className="flex gap-3 bg-gray-50 rounded-xl p-3 mb-5">
-                {ga.ga_images?.[0]?.url ? (
-                  <img src={ga.ga_images.find((i: any) => i.is_primary)?.url || ga.ga_images[0].url}
-                    alt={ga.ten} className="w-16 h-16 object-cover rounded-xl flex-shrink-0" />
-                ) : (
-                  <div className="w-16 h-16 bg-orange-800 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">🐓</div>
-                )}
-                <div>
-                  <div className="font-black text-gray-900">{ga.ten}</div>
-                  <div className="text-xs text-gray-500">{ga.loai_ga} • {ga.khu_vuc}</div>
-                  <div className="text-[#8B1A1A] font-black text-base mt-0.5">
-                    {giaGa.toLocaleString('vi-VN')} đ
-                  </div>
-                </div>
-              </div>
-
-              {/* 2 lựa chọn */}
-              <div className="space-y-3">
-                {/* Mua qua sàn */}
-                <button onClick={() => setMode('qua-san')}
-                  className="w-full text-left border-2 border-green-500 rounded-xl p-4 hover:bg-green-50 transition group">
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl mt-0.5">🔒</span>
-                    <div className="flex-1">
-                      <div className="font-black text-green-800 flex items-center gap-2">
-                        Mua qua sàn Chủ Gà Việt
-                        <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">AN TOÀN</span>
-                      </div>
-                      <div className="text-sm text-green-700 mt-1">
-                        ✓ Đặt cọc {cocPercent}% ({tiencoc.toLocaleString('vi-VN')}đ) qua sàn<br/>
-                        ✓ Admin xác nhận & bảo đảm giao dịch<br/>
-                        ✓ Hoàn cọc nếu gà không đúng mô tả<br/>
-                        ✓ Phí sàn {phiPercent}% ({phiGD.toLocaleString('vi-VN')}đ)
-                      </div>
-                    </div>
-                    <span className="text-green-500 group-hover:translate-x-1 transition">→</span>
-                  </div>
+              {/* THÔNG BÁO */}
+              <div className="relative" ref={notifRef}>
+                <button onClick={toggleNotif} className="relative hover:text-yellow-300 transition">
+                  <Bell className="w-5 h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 bg-yellow-400 text-black text-xs font-black w-4 h-4 rounded-full flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
                 </button>
 
-                {/* Tự mua riêng */}
-                <button onClick={() => setMode('tu-mua')}
-                  className="w-full text-left border-2 border-orange-300 rounded-xl p-4 hover:bg-orange-50 transition group">
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl mt-0.5">⚠️</span>
-                    <div className="flex-1">
-                      <div className="font-black text-orange-800">Tự liên hệ mua riêng</div>
-                      <div className="text-sm text-orange-700 mt-1">
-                        ✗ Không có bảo đảm từ sàn<br/>
-                        ✗ Rủi ro lừa đảo cao hơn<br/>
-                        ✓ Không mất phí sàn
-                      </div>
+                {showNotif && (
+                  <div className="absolute right-0 top-10 bg-white text-gray-800 rounded-xl shadow-xl w-72 z-50 overflow-hidden">
+                    <div className="px-4 py-3 border-b flex justify-between items-center">
+                      <span className="font-bold text-sm">🔔 Thông báo</span>
+                      {notifications.length > 0 && (
+                        <button onClick={() => { setNotifications([]); setUnreadCount(0); }}
+                          className="text-xs text-gray-400 hover:text-red-500">
+                          Xóa tất cả
+                        </button>
+                      )}
                     </div>
-                    <span className="text-orange-400 group-hover:translate-x-1 transition">→</span>
-                  </div>
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* ── BƯỚC 2A: MUA QUA SÀN ── */}
-          {mode === 'qua-san' && (
-            <>
-              {/* Chi tiết giao dịch */}
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
-                <div className="font-bold text-green-800 mb-3">📋 Chi tiết giao dịch</div>
-                <div className="space-y-2 text-sm">
-                  {[
-                    { label: 'Giá gà', value: `${giaGa.toLocaleString('vi-VN')} đ`, bold: true },
-                    { label: `Tiền cọc (${cocPercent}%)`, value: `${tiencoc.toLocaleString('vi-VN')} đ`, color: 'text-blue-600' },
-                    { label: `Phí sàn (${phiPercent}%)`, value: `${phiGD.toLocaleString('vi-VN')} đ`, color: 'text-gray-500' },
-                    { label: 'Người bán', value: nguoiBan?.username || 'Người bán' },
-                  ].map(item => (
-                    <div key={item.label} className="flex justify-between items-center py-1.5 border-b border-green-100 last:border-0">
-                      <span className="text-gray-600">{item.label}</span>
-                      <span className={`font-bold ${item.color || 'text-gray-900'}`}>{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* QR VietQR */}
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-                <div className="font-bold text-blue-800 mb-3">📱 Quét QR đặt cọc</div>
-                <div className="flex gap-4 items-center">
-                  <img src={qrUrl} alt="VietQR" className="w-32 h-32 rounded-lg border border-blue-200 bg-white flex-shrink-0"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                  <div className="text-sm space-y-1.5">
-                    <div><span className="text-gray-500">Ngân hàng:</span> <span className="font-bold">{tkNganHang}</span></div>
-                    <div><span className="text-gray-500">Số TK:</span> <span className="font-bold font-mono">{tkSo}</span></div>
-                    <div><span className="text-gray-500">Chủ TK:</span> <span className="font-bold">{tkTen}</span></div>
-                    <div><span className="text-gray-500">Số tiền:</span> <span className="font-black text-blue-700">{tiencoc.toLocaleString('vi-VN')} đ</span></div>
-                    <div><span className="text-gray-500">Nội dung:</span> <span className="font-mono font-bold text-red-700">COC {ga.id}</span></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 mb-4">
-                💡 Sau khi chuyển khoản, nhấn <strong>"Xác nhận đã cọc"</strong> — admin sẽ kiểm tra và xác nhận trong vòng 24h. Giao dịch sẽ được bảo đảm bởi Chủ Gà Việt.
-              </div>
-
-              <div className="flex gap-3">
-                <button onClick={() => setMode('choose')}
-                  className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50 transition">
-                  ← Quay lại
-                </button>
-                <button onClick={handleDatCoc} disabled={loading}
-                  className="flex-1 bg-green-600 text-white font-black py-3 rounded-xl hover:bg-green-700 transition disabled:opacity-60">
-                  {loading ? '⏳ Đang xử lý...' : '✅ Xác nhận đã cọc'}
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* ── BƯỚC 2B: TỰ MUA RIÊNG ── */}
-          {mode === 'tu-mua' && (
-            <>
-              {/* Cảnh báo */}
-              <div className="bg-orange-50 border-2 border-orange-400 rounded-xl p-4 mb-4">
-                <div className="flex items-start gap-2">
-                  <span className="text-2xl">⚠️</span>
-                  <div>
-                    <div className="font-black text-orange-800 mb-1">Cảnh báo rủi ro!</div>
-                    <div className="text-sm text-orange-700 space-y-1">
-                      <div>• Giao dịch ngoài sàn không được bảo đảm</div>
-                      <div>• Chủ Gà Việt không chịu trách nhiệm nếu xảy ra tranh chấp</div>
-                      <div>• Hãy gặp mặt trực tiếp khi giao dịch</div>
-                      <div>• Không chuyển khoản trước khi xem gà thật</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Thông tin liên hệ người bán */}
-              <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-                <div className="font-bold text-gray-700 mb-3">👤 Thông tin người bán</div>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-12 h-12 bg-[#8B1A1A] rounded-full flex items-center justify-center text-white font-black text-lg">
-                    {(nguoiBan?.username || 'U')[0].toUpperCase()}
-                  </div>
-                  <div>
-                    <div className="font-bold">{nguoiBan?.username || 'Người bán'}</div>
-                    <div className="text-xs text-gray-500">⭐ {nguoiBan?.trust_score || 5.0} điểm uy tín</div>
-                  </div>
-                </div>
-
-                {nguoiBan?.phone && nguoiBan?.phone_visibility !== 'private' ? (
-                  <div className="space-y-2">
-                    <a href={`tel:${nguoiBan.phone}`}
-                      className="flex items-center gap-3 bg-green-50 border border-green-200 text-green-800 font-bold py-2.5 px-4 rounded-xl hover:bg-green-100 transition">
-                      <span className="text-xl">📞</span>
-                      <div>
-                        <div className="text-xs text-green-600 font-normal">Gọi điện</div>
-                        <div>{nguoiBan.phone}</div>
+                    {notifications.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-gray-400 text-sm">Chưa có thông báo</div>
+                    ) : (
+                      <div className="max-h-72 overflow-y-auto">
+                        {notifications.map(n => (
+                          <button key={n.id} onClick={() => handleNotifClick(n)}
+                            className={`w-full flex items-start gap-3 px-4 py-3 hover:bg-gray-50 border-b transition text-left ${!n.read ? 'bg-red-50' : ''}`}>
+                            {n.ga_anh ? (
+                              <img src={n.ga_anh} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-8 h-8 bg-[#8B1A1A] rounded-full flex items-center justify-center text-white text-sm flex-shrink-0">🐓</div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-bold text-gray-800 truncate">{n.ga_ten}</div>
+                              <div className="text-xs text-gray-600 truncate">{n.noi_dung}</div>
+                              <div className="text-xs text-gray-400 mt-0.5">
+                                {n.time.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            </div>
+                            {!n.read && <div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0 mt-1" />}
+                          </button>
+                        ))}
                       </div>
-                    </a>
-                    <a href={`https://zalo.me/${nguoiBan.phone}`} target="_blank"
-                      className="flex items-center gap-3 bg-blue-50 border border-blue-200 text-blue-800 font-bold py-2.5 px-4 rounded-xl hover:bg-blue-100 transition">
-                      <span className="text-xl">💬</span>
-                      <div>
-                        <div className="text-xs text-blue-600 font-normal">Zalo</div>
-                        <div>{nguoiBan.phone}</div>
-                      </div>
-                    </a>
-                  </div>
-                ) : (
-                  <div className="bg-gray-50 rounded-xl p-3 text-sm text-gray-500 text-center">
-                    🔒 Người bán chưa cung cấp thông tin liên hệ công khai
+                    )}
                   </div>
                 )}
               </div>
 
-              <div className="flex gap-3">
-                <button onClick={() => setMode('choose')}
-                  className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50 transition">
-                  ← Quay lại
-                </button>
-                <button onClick={onClose}
-                  className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition">
-                  Đã hiểu, tiếp tục
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* ── SUCCESS ── */}
-          {mode === 'success' && (
-            <div className="text-center py-4">
-              <div className="text-6xl mb-4">🎉</div>
-              <h3 className="font-black text-xl text-gray-900 mb-2">Đặt cọc thành công!</h3>
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-left text-sm">
-                <div className="font-bold text-green-800 mb-2">✅ Tiếp theo:</div>
-                <div className="space-y-1 text-green-700">
-                  <div>1. Admin xác nhận thanh toán trong 24h</div>
-                  <div>2. Chat với người bán để thống nhất giao nhận</div>
-                  <div>3. Thanh toán phần còn lại khi nhận gà</div>
-                </div>
-              </div>
-              {maGD && (
-                <div className="bg-gray-50 rounded-xl p-3 mb-4 text-xs text-gray-500 font-mono">
-                  Mã GD: {maGD}
-                </div>
-              )}
-              <button onClick={onClose}
-                className="w-full bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition">
-                Tiếp tục nhắn tin với người bán →
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Modal Liên Hệ ─────────────────────────────────────────────
-function ModalLienHe({ nguoiBan, onClose }: { nguoiBan: any; onClose: () => void }) {
-  const phone = nguoiBan?.phone;
-  const phonePublic = nguoiBan?.phone_visibility !== 'private';
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="font-black text-lg">📞 Liên hệ người bán</h2>
-          <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 text-gray-500">✕</button>
-        </div>
-        <div className="p-5 space-y-3">
-          <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 mb-4">
-            <div className="w-12 h-12 bg-[#8B1A1A] rounded-full flex items-center justify-center text-white font-black text-lg">
-              {(nguoiBan?.username || 'U')[0].toUpperCase()}
-            </div>
-            <div>
-              <div className="font-bold text-gray-900">{nguoiBan?.username || 'Người bán'}</div>
-              <div className="text-xs text-gray-500">⭐ {nguoiBan?.trust_score || 5.0} điểm uy tín</div>
-            </div>
-          </div>
-
-          {phone && phonePublic ? (
-            <>
-              <a href={`tel:${phone}`}
-                className="flex items-center gap-3 w-full bg-green-50 border border-green-200 text-green-800 font-bold py-3 px-4 rounded-xl hover:bg-green-100 transition">
-                <span className="text-xl">📞</span>
-                <div><div className="text-xs text-green-600 font-normal">Gọi điện</div><div>{phone}</div></div>
-              </a>
-              <a href={`https://zalo.me/${phone}`} target="_blank"
-                className="flex items-center gap-3 w-full bg-blue-50 border border-blue-200 text-blue-800 font-bold py-3 px-4 rounded-xl hover:bg-blue-100 transition">
-                <span className="text-xl">💬</span>
-                <div><div className="text-xs text-blue-600 font-normal">Zalo</div><div>{phone}</div></div>
-              </a>
-            </>
-          ) : !phonePublic ? (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center text-gray-400 text-sm">
-              🔒 Người bán đã ẩn thông tin liên hệ
-            </div>
-          ) : (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center text-gray-400 text-sm">
-              📞 Người bán chưa cập nhật SĐT
-            </div>
-          )}
-          <div className="text-xs text-gray-400 text-center pt-1">Hoặc dùng chat trong app để nhắn tin</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main Page ─────────────────────────────────────────────────
-export default function GaDetailPage() {
-  const { id } = useParams();
-  const { openChat } = useChatPopup();
-
-  const [ga, setGa] = useState<any>(null);
-  const [aiData, setAiData] = useState<any>(null);
-  const [nguoiBan, setNguoiBan] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [anhChinh, setAnhChinh] = useState(0);
-  const [comment, setComment] = useState('');
-  const [comments, setComments] = useState<any[]>([]);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [showMuaNgay, setShowMuaNgay] = useState(false);
-  const [showLienHe, setShowLienHe] = useState(false);
-
-  useEffect(() => { if (id) fetchGa(); }, [id]);
-
-  const fetchGa = async () => {
-    try {
-      const { data: gaData } = await supabase
-        .from('ga')
-        .select(`*, ga_images (id, url, is_primary), ai_analysis (total_score, nhan_xet, mat_score, chan_score, vay_score, dau_score)`)
-        .eq('id', id).single();
-      if (gaData) {
-        setGa(gaData);
-        setAiData(gaData.ai_analysis?.[0] || null);
-        if (gaData.user_id) {
-          const { data: profile } = await supabase.from('profiles').select('*').eq('id', gaData.user_id).single();
-          setNguoiBan(profile);
-        }
-        const { data: cmts } = await supabase.from('comments').select('*, profiles(username)').eq('ga_id', id).order('created_at', { ascending: false });
-        setComments(cmts || []);
-        await supabase.from('ga').update({ view_count: (gaData.view_count || 0) + 1 }).eq('id', id);
-      }
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
-  };
-
-  const addComment = async () => {
-    if (!comment.trim()) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { alert('Vui lòng đăng nhập để bình luận'); return; }
-    const { data } = await supabase.from('comments').insert({ ga_id: id, user_id: user.id, noi_dung: comment }).select('*, profiles(username)').single();
-    if (data) { setComments([data, ...comments]); setComment(''); }
-  };
-
-  const handleTraGia = async () => {
-    if (!ga?.user_id) return;
-    setChatLoading(true);
-    const anhGa = ga.ga_images?.find((i: any) => i.is_primary)?.url || ga.ga_images?.[0]?.url || '';
-    await openChat(ga.id, ga.user_id, ga.ten, anhGa);
-    setChatLoading(false);
-  };
-
-  const getDiemMau = (d: number) => d >= 8 ? 'text-green-600' : d >= 6.5 ? 'text-yellow-600' : 'text-red-500';
-  const getBarWidth = (d: number) => `${(d || 0) * 10}%`;
-
-  if (loading) return (
-    <div className="max-w-6xl mx-auto px-4 py-8 animate-pulse">
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-gray-200 h-72 rounded-xl"></div>
-        <div className="space-y-4">
-          <div className="bg-gray-200 h-8 rounded w-3/4"></div>
-          <div className="bg-gray-200 h-6 rounded w-1/2"></div>
-          <div className="bg-gray-200 h-32 rounded"></div>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (!ga) return (
-    <div className="text-center py-20">
-      <div className="text-5xl mb-4">🐓</div>
-      <div className="font-bold text-gray-600">Không tìm thấy gà này</div>
-      <Link href="/cho" className="mt-4 inline-block text-[#8B1A1A] hover:underline">← Về chợ</Link>
-    </div>
-  );
-
-  const anhList = ga.ga_images || [];
-  const anhHienTai = anhList[anhChinh]?.url;
-
-  return (
-    <div className="max-w-6xl mx-auto px-4 py-4">
-
-      {/* MODALS */}
-      {showMuaNgay && nguoiBan && (
-        <ModalMuaNgay ga={ga} nguoiBan={nguoiBan} onClose={() => setShowMuaNgay(false)} />
-      )}
-      {showLienHe && (
-        <ModalLienHe nguoiBan={nguoiBan} onClose={() => setShowLienHe(false)} />
-      )}
-
-      {/* BREADCRUMB */}
-      <div className="text-xs text-gray-500 mb-4">
-        <Link href="/" className="hover:text-red-800">Trang chủ</Link> &gt;{' '}
-        <Link href="/cho" className="hover:text-red-800">Chợ</Link> &gt;{' '}
-        <span className="text-gray-800">{ga.ten}</span>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-6 mb-6">
-        {/* ẢNH */}
-        <div>
-          {anhHienTai ? (
-            <img src={anhHienTai} alt={ga.ten} className="w-full h-72 object-cover rounded-xl mb-3" />
-          ) : (
-            <div className="bg-orange-800 rounded-xl h-72 flex items-center justify-center text-8xl mb-3">🐓</div>
-          )}
-          {anhList.length > 0 && (
-            <div className="flex gap-2 flex-wrap">
-              {anhList.map((anh: any, i: number) => (
-                <button key={i} onClick={() => setAnhChinh(i)}
-                  className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition ${anhChinh === i ? 'border-yellow-400' : 'border-transparent'}`}>
-                  <img src={anh.url} alt="" className="w-full h-full object-cover" />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* THÔNG TIN */}
-        <div>
-          <div className="text-xs text-[#8B1A1A] font-semibold mb-1">{ga.loai_ga}</div>
-          <h1 className="font-black text-2xl text-gray-800 mb-2">{ga.ten}</h1>
-          <div className="text-[#8B1A1A] font-black text-3xl mb-4">{parseInt(ga.gia).toLocaleString('vi-VN')} đ</div>
-          <div className="text-sm text-gray-500 mb-1">Giá thương lượng</div>
-          <div className="flex gap-3 mb-4 flex-wrap">
-            {ga.can_nang && <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">{ga.can_nang} kg</span>}
-            {ga.tuoi && <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">{ga.tuoi} tháng</span>}
-            <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">📍 {ga.khu_vuc}</span>
-            {ga.view_count > 0 && <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm">👁 {ga.view_count} lượt xem</span>}
-          </div>
-
-          {/* 3 NÚT */}
-          <div className="flex gap-3 mb-6 flex-wrap">
-            <button onClick={() => setShowMuaNgay(true)}
-              className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition min-w-[100px]">
-              🛒 Mua ngay
-            </button>
-            <button onClick={handleTraGia} disabled={chatLoading}
-              className="flex-1 border-2 border-[#8B1A1A] text-[#8B1A1A] font-bold py-3 rounded-xl hover:bg-red-50 transition min-w-[100px] disabled:opacity-60">
-              {chatLoading ? '⏳...' : '💬 Trả giá'}
-            </button>
-            <button onClick={() => setShowLienHe(true)}
-              className="border-2 border-gray-300 text-gray-600 font-bold px-4 py-3 rounded-xl hover:bg-gray-50 transition">
-              📞 Liên hệ
-            </button>
-          </div>
-
-          {/* AI PHÂN TÍCH */}
-          {aiData ? (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="font-black text-gray-800">🤖 Phân tích AI</h3>
-                <div className={`text-3xl font-black ${getDiemMau(aiData.total_score)}`}>{aiData.total_score}/10</div>
-              </div>
-              {aiData.nhan_xet && <p className="text-sm text-gray-600 mb-3 leading-relaxed">{aiData.nhan_xet}</p>}
-              {(aiData.mat_score || aiData.chan_score || aiData.vay_score || aiData.dau_score) && (
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { label: '👁 Mắt', score: aiData.mat_score },
-                    { label: '🦵 Chân', score: aiData.chan_score },
-                    { label: '🐾 Vảy', score: aiData.vay_score },
-                    { label: '🐓 Đầu', score: aiData.dau_score },
-                  ].filter(item => item.score).map(item => (
-                    <div key={item.label} className="bg-white rounded-lg p-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-semibold text-gray-600">{item.label}</span>
-                        <span className={`text-xs font-black ${getDiemMau(item.score)}`}>{item.score}/10</span>
-                      </div>
-                      <div className="h-1.5 bg-gray-200 rounded-full mt-1">
-                        <div className="h-1.5 bg-[#8B1A1A] rounded-full" style={{ width: getBarWidth(item.score) }}></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center text-gray-400 text-sm">
-              🤖 Chưa có phân tích AI cho gà này
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 space-y-4">
-          {ga.mo_ta && (
-            <div className="bg-white rounded-xl p-4 shadow-sm">
-              <h3 className="font-black text-gray-800 mb-3">📋 Mô tả</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">{ga.mo_ta}</p>
-            </div>
-          )}
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <h3 className="font-black text-gray-800 mb-3">💬 Bình luận ({comments.length})</h3>
-            <div className="flex gap-2 mb-4">
-              <input value={comment} onChange={e => setComment(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addComment()}
-                placeholder="Nhận xét về con gà này..."
-                className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
-              <button onClick={addComment} className="bg-[#8B1A1A] text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-[#6B0F0F] transition">Gửi</button>
-            </div>
-            {comments.length === 0 ? (
-              <div className="text-center py-6 text-gray-400 text-sm">Chưa có bình luận. Hãy là người đầu tiên!</div>
-            ) : (
-              <div className="space-y-3">
-                {comments.map((c: any) => (
-                  <div key={c.id} className="flex gap-3">
-                    <div className="w-8 h-8 bg-red-800 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                      {(c.profiles?.username || c.user_id)?.[0]?.toUpperCase() || 'U'}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex gap-2 items-center">
-                        <span className="font-semibold text-sm text-gray-800">{c.profiles?.username || 'Người dùng'}</span>
-                        <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleDateString('vi-VN')}</span>
-                      </div>
-                      <div className="text-sm text-gray-600 mt-0.5">{c.noi_dung}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <h3 className="font-black text-gray-800 mb-3">👤 Người bán</h3>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 bg-[#8B1A1A] rounded-full flex items-center justify-center text-white font-black text-lg">
-                {(nguoiBan?.username || 'U')[0].toUpperCase()}
-              </div>
-              <div>
-                <div className="font-bold text-gray-800">{nguoiBan?.username || 'Người bán'}</div>
-                <div className="text-xs text-gray-500">⭐ {nguoiBan?.trust_score || 5.0}</div>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Link href={`/ho-so/${ga.user_id}`}
-                className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-2 rounded-xl hover:bg-gray-50 transition text-sm text-center">
-                Xem hồ sơ
+              {/* CHAT ICON → /tin-nhan */}
+              <Link href="/tin-nhan" className="relative hover:text-yellow-300 transition">
+                <MessageCircle className="w-5 h-5" />
               </Link>
-              <button onClick={handleTraGia} disabled={chatLoading}
-                className="flex-1 bg-[#8B1A1A] text-white font-bold py-2 rounded-xl hover:bg-[#6B0F0F] transition text-sm disabled:opacity-60">
-                💬 Nhắn tin
-              </button>
+
+              {/* USER MENU */}
+              <div className="relative" ref={userMenuRef}>
+                <button onClick={toggleUserMenu}
+                  className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full transition">
+                  <User className="w-4 h-4" />
+                  <span className="text-xs font-semibold hidden sm:block max-w-[80px] truncate">{userName}</span>
+                </button>
+                {userMenuOpen && (
+                  <div className="absolute right-0 top-10 bg-white text-gray-800 rounded-xl shadow-lg w-48 py-2 z-50">
+                    <div className="px-4 py-2 border-b">
+                      <div className="font-bold text-sm truncate">{userName}</div>
+                      <div className="text-xs text-gray-400 truncate">{user.email}</div>
+                    </div>
+                    <Link href="/ho-so/me" onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-sm">
+                      <User className="w-4 h-4" /> Hồ sơ của tôi
+                    </Link>
+                    <Link href="/dang-ga" onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-sm">
+                      🐓 Đăng bán gà
+                    </Link>
+                    <button onClick={handleLogout}
+                      className="flex items-center gap-2 px-4 py-2 hover:bg-red-50 text-red-600 text-sm w-full">
+                      <LogOut className="w-4 h-4" /> Đăng xuất
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link href="/login" className="text-sm font-semibold hover:text-yellow-300 transition hidden sm:block">Đăng nhập</Link>
+              <Link href="/register" className="bg-yellow-400 text-black px-3 py-1.5 rounded-full text-xs font-bold hover:bg-yellow-300 transition">Đăng ký</Link>
             </div>
-          </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <h3 className="font-black text-gray-800 mb-3">🐓 Gà tương tự</h3>
-            <div className="text-sm text-gray-400 text-center py-2">Đang cập nhật...</div>
+          )}
+
+          <div ref={mobileMenuRef} className="md:hidden">
+            <Menu className="w-5 h-5 cursor-pointer" onClick={() => setMenuOpen(prev => !prev)} />
+            {menuOpen && (
+              <div className="absolute right-0 top-14 left-0 bg-[#6B0F0F] px-4 py-3 flex flex-col gap-3 text-sm shadow-lg z-40">
+                <Link href="/cho" onClick={() => setMenuOpen(false)}>🛒 Chợ giao dịch</Link>
+                <Link href="/thu-vien" onClick={() => setMenuOpen(false)}>📚 Thư viện</Link>
+                <Link href="/cong-dong" onClick={() => setMenuOpen(false)}>👥 Cộng đồng</Link>
+                <Link href="/ai-phan-tich" onClick={() => setMenuOpen(false)}>🤖 AI Phân Tích</Link>
+                <Link href="/dang-ga" onClick={() => setMenuOpen(false)}>➕ Đăng gà</Link>
+                {!user && (
+                  <>
+                    <Link href="/login" onClick={() => setMenuOpen(false)}>🔑 Đăng nhập</Link>
+                    <Link href="/register" onClick={() => setMenuOpen(false)}>📝 Đăng ký</Link>
+                  </>
+                )}
+                {user && (
+                  <button onClick={handleLogout} className="text-left text-red-300">🚪 Đăng xuất</button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
-    </div>
+    </header>
   );
 }
