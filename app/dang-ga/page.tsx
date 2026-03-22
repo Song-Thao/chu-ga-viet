@@ -103,10 +103,17 @@ export default function DangGaPage() {
 
       const loaiFinal = loaiTuy ? form.loai_tu_nhap : form.loai_ga;
 
+      // Lấy JWT token để truyền vào API (pass RLS)
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
       // 1. Lưu gà vào database (thêm video_url)
       const res = await fetch('/api/ga', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           user_id: user.id,
           ten: form.ten,
