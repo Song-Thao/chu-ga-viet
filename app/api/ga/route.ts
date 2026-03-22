@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-// GET — Lấy danh sách gà
+// ── GET — Lấy danh sách gà ───────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
     const { searchParams } = new URL(req.url);
     const loai = searchParams.get('loai');
     const khu_vuc = searchParams.get('khu_vuc');
@@ -38,17 +38,37 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST — Đăng gà mới
+// ── POST — Đăng gà mới (truyền JWT để pass RLS) ──────────────
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { ten, loai_ga, gia, can_nang, tuoi, khu_vuc, mo_ta, user_id, images, video_url, ai_result } = body;
+    const {
+      ten, loai_ga, gia, can_nang, tuoi,
+      khu_vuc, mo_ta, user_id, images,
+      video_url, ai_result,
+    } = body;
 
     if (!ten || !gia || !user_id) {
       return NextResponse.json({ error: 'Thiếu thông tin bắt buộc' }, { status: 400 });
     }
 
-    // 1. Lưu gà vào database (thêm video_url)
+    // Lấy JWT token từ Authorization header
+    const authHeader = req.headers.get('authorization');
+
+    // Tạo client với user token (để RLS auth.uid() hoạt động)
+    // Nếu không có token → dùng service role key (bypass RLS)
+    const supabase = authHeader
+      ? createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { global: { headers: { Authorization: authHeader } } }
+        )
+      : createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+
+    // 1. Lưu gà
     const { data: gaData, error: gaError } = await supabase
       .from('ga')
       .insert({
@@ -70,7 +90,7 @@ export async function POST(req: NextRequest) {
     if (gaError) throw gaError;
     const gaId = gaData.id;
 
-    // 2. Lưu ảnh nếu có
+    // 2. Lưu ảnh
     if (images && images.length > 0) {
       const imageInserts = images.map((url: string, i: number) => ({
         ga_id: gaId,
@@ -80,7 +100,7 @@ export async function POST(req: NextRequest) {
       await supabase.from('ga_images').insert(imageInserts);
     }
 
-    // 3. Lưu kết quả AI nếu có
+    // 3. Lưu AI result
     if (ai_result) {
       await supabase.from('ai_analysis').insert({
         ga_id: gaId,
