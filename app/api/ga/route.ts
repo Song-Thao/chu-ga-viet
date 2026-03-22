@@ -17,8 +17,8 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from('ga')
       .select(`
-        id, ten, loai_ga, gia, can_nang, tuoi, khu_vuc, mo_ta, 
-        status, view_count, created_at,
+        id, ten, loai_ga, gia, can_nang, tuoi, khu_vuc, mo_ta,
+        video_url, status, view_count, created_at,
         ga_images (url, is_primary),
         ai_analysis (total_score)
       `)
@@ -42,13 +42,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { ten, loai_ga, gia, can_nang, tuoi, khu_vuc, mo_ta, user_id, images, ai_result } = body;
+    const { ten, loai_ga, gia, can_nang, tuoi, khu_vuc, mo_ta, user_id, images, video_url, ai_result } = body;
 
     if (!ten || !gia || !user_id) {
       return NextResponse.json({ error: 'Thiếu thông tin bắt buộc' }, { status: 400 });
     }
 
-    // 1. Lưu gà vào database
+    // 1. Lưu gà vào database (thêm video_url)
     const { data: gaData, error: gaError } = await supabase
       .from('ga')
       .insert({
@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
         tuoi: parseInt(tuoi) || null,
         khu_vuc,
         mo_ta,
+        video_url: video_url || null,
         status: 'active',
         view_count: 0,
       })
@@ -67,7 +68,6 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (gaError) throw gaError;
-
     const gaId = gaData.id;
 
     // 2. Lưu ảnh nếu có
@@ -77,7 +77,6 @@ export async function POST(req: NextRequest) {
         url,
         is_primary: i === 0,
       }));
-
       await supabase.from('ga_images').insert(imageInserts);
     }
 
