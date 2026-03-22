@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase';
 
 const KhuVuc = [
   'Tất cả', 'TP.HCM', 'Bình Dương', 'Đồng Nai', 'Long An',
@@ -35,46 +36,108 @@ function getVideoThumb(url: string): string | null {
   return null;
 }
 
+// Trạng thái gà
+const GA_STATUS: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+  active:             { label: 'Đang bán',               color: '#16a34a', bg: '#dcfce7', icon: '🟢' },
+  in_transaction:     { label: 'Đang giao dịch',         color: '#ca8a04', bg: '#fef9c3', icon: '🟡' },
+  pending_completion: { label: 'Chờ xác nhận',           color: '#2563eb', bg: '#dbeafe', icon: '🔵' },
+  pending_dispute:    { label: 'Chờ khiếu nại (3 ngày)', color: '#ea580c', bg: '#ffedd5', icon: '🟠' },
+  sold:               { label: 'Đã bán',                 color: '#7c3aed', bg: '#ede9fe', icon: '✅' },
+  hidden:             { label: 'Đang ẩn',                color: '#6b7280', bg: '#f3f4f6', icon: '👁️' },
+};
+
 // ── GaDetailModal ─────────────────────────────────────────────
-function GaDetailModal({ ga, onClose }: { ga: any; onClose: () => void }) {
+function GaDetailModal({ ga: gaInit, onClose, onDeleted }: {
+  ga: any; onClose: () => void; onDeleted?: () => void;
+}) {
+  const [ga, setGa] = useState(gaInit);
   const [activeMedia, setActiveMedia] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editForm, setEditForm] = useState({ ten: gaInit.ten, gia: String(gaInit.gia), mo_ta: gaInit.mo_ta || '' });
+
+  const isOwner = !!(currentUser && currentUser.id === ga.user_id);
+  const aiScore = ga.ai_analysis?.[0]?.total_score;
+  const status = GA_STATUS[ga.status] || GA_STATUS['active'];
 
   const mediaList: { type: 'image' | 'video'; url: string; thumb?: string }[] = [
     ...(ga.ga_images || []).map((img: any) => ({ type: 'image' as const, url: img.url })),
     ...(ga.video_url ? [{ type: 'video' as const, url: ga.video_url, thumb: getVideoThumb(ga.video_url) || '' }] : []),
   ];
-
   const currentMedia = mediaList[activeMedia];
   const ytId = currentMedia?.type === 'video' ? getYoutubeId(currentMedia.url) : null;
-  const aiScore = ga.ai_analysis?.[0]?.total_score;
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setCurrentUser(data?.user ?? null));
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, []);
 
   useEffect(() => { setIsPlaying(false); }, [activeMedia]);
 
+  async function updateStatus(newStatus: string) {
+    setActionLoading(true);
+    const updates: any = { status: newStatus };
+    if (newStatus === 'pending_dispute') {
+      const d = new Date(); d.setDate(d.getDate() + 3);
+      updates.dispute_deadline = d.toISOString();
+    }
+    if (newStatus === 'sold') {
+      updates.sold_at = new Date().toISOString();
+      const ad = new Date(); ad.setDate(ad.getDate() + 2);
+      updates.auto_delete_at = ad.toISOString();
+    }
+    await supabase.from('ga').update(updates).eq('id', ga.id);
+    setGa((prev: any) => ({ ...prev, ...updates }));
+    setActionLoading(false);
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Xóa "${ga.ten}"?`)) return;
+    setActionLoading(true);
+    await supabase.from('ga').delete().eq('id', ga.id);
+    setActionLoading(false);
+    onDeleted?.();
+    onClose();
+  }
+
+  async function handleSaveEdit() {
+    setActionLoading(true);
+    await supabase.from('ga').update({
+      ten: editForm.ten, gia: parseInt(editForm.gia), mo_ta: editForm.mo_ta,
+    }).eq('id', ga.id);
+    setGa((prev: any) => ({ ...prev, ten: editForm.ten, gia: editForm.gia, mo_ta: editForm.mo_ta }));
+    setActionLoading(false);
+    setShowEdit(false);
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-3 md:p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
-          <div>
-            <h2 className="font-black text-lg text-gray-800">{ga.ten}</h2>
-            <div className="text-xs text-gray-500">{ga.loai_ga} • 📍 {ga.khu_vuc}</div>
+        <div className="flex items-center justify-between p-3 border-b sticky top-0 bg-white z-10">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="min-w-0">
+              <h2 className="font-black text-base text-gray-800 truncate">{ga.ten}</h2>
+              <div className="text-xs text-gray-500">{ga.loai_ga} • 📍 {ga.khu_vuc}</div>
+            </div>
+            <span className="flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-bold"
+              style={{ background: status.bg, color: status.color }}>
+              {status.icon} {status.label}
+            </span>
           </div>
-          <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 text-gray-600 text-lg">✕</button>
+          <button onClick={onClose} className="ml-2 flex-shrink-0 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 text-gray-600">✕</button>
         </div>
 
-        <div className="p-4">
-          {/* Media viewer */}
+        <div className="p-3 md:p-4">
+          {/* Media */}
           {mediaList.length > 0 && (
-            <div className="mb-4">
-              <div className="relative bg-black rounded-xl overflow-hidden mb-2" style={{ paddingBottom: '56.25%' }}>
+            <div className="mb-3">
+              <div className="relative bg-black rounded-xl overflow-hidden mb-2" style={{ paddingBottom: '52%' }}>
                 {currentMedia.type === 'image' ? (
                   <img src={currentMedia.url} alt={ga.ten} className="absolute inset-0 w-full h-full object-contain" />
                 ) : ytId ? (
@@ -83,44 +146,30 @@ function GaDetailModal({ ga, onClose }: { ga: any; onClose: () => void }) {
                       <img src={currentMedia.thumb || `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
                         alt="video" className="absolute inset-0 w-full h-full object-cover" />
                       <button onClick={() => setIsPlaying(true)} className="absolute inset-0 flex items-center justify-center">
-                        <div className="bg-black/60 rounded-full w-16 h-16 flex items-center justify-center hover:bg-black/80 transition">
-                          <span className="text-white text-3xl ml-1">▶</span>
+                        <div className="bg-black/60 rounded-full w-14 h-14 flex items-center justify-center hover:bg-black/80 transition">
+                          <span className="text-white text-2xl ml-1">▶</span>
                         </div>
                       </button>
-                      <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
-                        🎬 Nhấn để phát video
-                      </div>
                     </>
                   ) : (
-                    <iframe
-                      src={`https://www.youtube.com/embed/${ytId}?autoplay=1&controls=1&rel=0`}
+                    <iframe src={`https://www.youtube.com/embed/${ytId}?autoplay=1&controls=1&rel=0`}
                       className="absolute inset-0 w-full h-full border-none"
-                      allow="autoplay; encrypted-media; fullscreen"
-                      allowFullScreen
-                    />
+                      allow="autoplay; encrypted-media; fullscreen" allowFullScreen />
                   )
                 ) : (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gray-900 text-white text-sm">
-                    🎬 Xem video trên nền tảng gốc
-                  </div>
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-900 text-white text-sm">🎬 Video</div>
                 )}
               </div>
-
               {mediaList.length > 1 && (
-                <div className="flex gap-2 overflow-x-auto pb-1">
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
                   {mediaList.map((m, i) => (
                     <button key={i} onClick={() => setActiveMedia(i)}
-                      className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition ${activeMedia === i ? 'border-[#8B1A1A]' : 'border-gray-200 hover:border-gray-400'}`}>
-                      {m.type === 'image' ? (
-                        <img src={m.url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <>
-                          <img src={m.thumb || ''} alt="video" className="w-full h-full object-cover bg-gray-900" />
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                            <span className="text-white text-base">▶</span>
-                          </div>
-                        </>
-                      )}
+                      className={`relative flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition ${activeMedia === i ? 'border-[#8B1A1A]' : 'border-gray-200'}`}>
+                      {m.type === 'image'
+                        ? <img src={m.url} alt="" className="w-full h-full object-cover" />
+                        : <><img src={m.thumb || ''} alt="" className="w-full h-full object-cover bg-gray-800" />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/40"><span className="text-white text-sm">▶</span></div></>
+                      }
                     </button>
                   ))}
                 </div>
@@ -129,42 +178,97 @@ function GaDetailModal({ ga, onClose }: { ga: any; onClose: () => void }) {
           )}
 
           {/* Info */}
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-2 gap-3 mb-3">
             <div>
-              <div className="text-[#8B1A1A] font-black text-2xl mb-2">
-                {parseInt(ga.gia).toLocaleString('vi-VN')} đ
-              </div>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {ga.can_nang && <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-sm">{ga.can_nang} kg</span>}
-                {ga.tuoi && <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-sm">{ga.tuoi} tháng</span>}
-                <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-sm">📍 {ga.khu_vuc}</span>
+              <div className="text-[#8B1A1A] font-black text-2xl mb-1">{parseInt(ga.gia).toLocaleString('vi-VN')} đ</div>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {ga.can_nang && <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-xs">{ga.can_nang} kg</span>}
+                {ga.tuoi && <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-xs">{ga.tuoi} tháng</span>}
+                <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-xs">📍 {ga.khu_vuc}</span>
               </div>
               {ga.mo_ta && <p className="text-sm text-gray-600 leading-relaxed">{ga.mo_ta}</p>}
             </div>
-
             {aiScore && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                <div className="flex justify-between items-center mb-2">
+                <div className="flex justify-between items-center mb-1">
                   <span className="font-bold text-sm text-gray-700">🤖 Phân tích AI</span>
-                  <span className={`text-2xl font-black ${aiScore >= 8 ? 'text-green-600' : aiScore >= 6.5 ? 'text-yellow-600' : 'text-red-500'}`}>
-                    {aiScore}/10
-                  </span>
+                  <span className={`text-xl font-black ${aiScore >= 8 ? 'text-green-600' : aiScore >= 6.5 ? 'text-yellow-600' : 'text-red-500'}`}>{aiScore}/10</span>
                 </div>
-                {ga.ai_analysis?.[0]?.nhan_xet && (
-                  <p className="text-xs text-gray-600">{ga.ai_analysis[0].nhan_xet}</p>
-                )}
+                {ga.ai_analysis?.[0]?.nhan_xet && <p className="text-xs text-gray-600">{ga.ai_analysis[0].nhan_xet}</p>}
               </div>
             )}
           </div>
 
+          {/* OWNER CONTROLS */}
+          {isOwner && (
+            <div className="border border-orange-200 bg-orange-50 rounded-xl p-3 mb-3">
+              <div className="text-xs font-bold text-orange-700 mb-2">🔧 Quản lý bài đăng của bạn</div>
+              {showEdit ? (
+                <div className="space-y-2">
+                  <input value={editForm.ten} onChange={e => setEditForm({ ...editForm, ten: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" placeholder="Tên gà" />
+                  <input type="number" value={editForm.gia} onChange={e => setEditForm({ ...editForm, gia: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" placeholder="Giá" />
+                  <textarea value={editForm.mo_ta} onChange={e => setEditForm({ ...editForm, mo_ta: e.target.value })}
+                    rows={2} placeholder="Mô tả"
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none" />
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowEdit(false)} className="flex-1 border border-gray-300 text-gray-600 py-1.5 rounded-lg text-xs font-bold">Hủy</button>
+                    <button onClick={handleSaveEdit} disabled={actionLoading}
+                      className="flex-1 bg-[#8B1A1A] text-white py-1.5 rounded-lg text-xs font-bold disabled:opacity-60">
+                      {actionLoading ? '⏳...' : '💾 Lưu'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {ga.status === 'active' && (<>
+                    <div className="flex gap-1.5">
+                      <button onClick={() => setShowEdit(true)} className="flex-1 bg-blue-50 text-blue-700 text-xs font-bold py-1.5 rounded-lg hover:bg-blue-100">✏️ Sửa</button>
+                      <button onClick={() => updateStatus('hidden')} disabled={actionLoading} className="flex-1 bg-white border text-gray-600 text-xs font-bold py-1.5 rounded-lg hover:bg-gray-50">👁️ Ẩn</button>
+                    </div>
+                    <button onClick={() => updateStatus('in_transaction')} disabled={actionLoading}
+                      className="w-full bg-yellow-50 text-yellow-700 text-xs font-bold py-1.5 rounded-lg hover:bg-yellow-100">🤝 Đánh dấu đang giao dịch</button>
+                    <button onClick={handleDelete} disabled={actionLoading}
+                      className="w-full bg-red-50 text-red-600 text-xs font-bold py-1.5 rounded-lg hover:bg-red-100">🗑️ Xóa bài đăng</button>
+                  </>)}
+                  {ga.status === 'hidden' && (<>
+                    <button onClick={() => updateStatus('active')} disabled={actionLoading}
+                      className="w-full bg-green-50 text-green-700 text-xs font-bold py-1.5 rounded-lg hover:bg-green-100">🟢 Hiện lại</button>
+                    <button onClick={handleDelete} disabled={actionLoading}
+                      className="w-full bg-red-50 text-red-600 text-xs font-bold py-1.5 rounded-lg hover:bg-red-100">🗑️ Xóa</button>
+                  </>)}
+                  {ga.status === 'in_transaction' && (<>
+                    <button onClick={() => updateStatus('pending_completion')} disabled={actionLoading}
+                      className="w-full bg-blue-50 text-blue-700 text-xs font-bold py-1.5 rounded-lg hover:bg-blue-100">✅ Xác nhận đã giao gà</button>
+                    <button onClick={() => updateStatus('active')} disabled={actionLoading}
+                      className="w-full bg-white border text-gray-600 text-xs font-bold py-1.5 rounded-lg hover:bg-gray-50">↩️ Huỷ giao dịch</button>
+                  </>)}
+                  {ga.status === 'pending_completion' && (
+                    <button onClick={() => updateStatus('pending_dispute')} disabled={actionLoading}
+                      className="w-full bg-orange-50 text-orange-700 text-xs font-bold py-1.5 rounded-lg hover:bg-orange-100">⚠️ Hoàn tất + mở khiếu nại 3 ngày</button>
+                  )}
+                  {ga.status === 'pending_dispute' && (
+                    <button onClick={() => updateStatus('sold')} disabled={actionLoading}
+                      className="w-full bg-purple-50 text-purple-700 text-xs font-bold py-1.5 rounded-lg hover:bg-purple-100">✅ Đóng khiếu nại — Hoàn tất bán</button>
+                  )}
+                  {ga.status === 'sold' && (
+                    <button onClick={handleDelete} disabled={actionLoading}
+                      className="w-full bg-red-50 text-red-600 text-xs font-bold py-1.5 rounded-lg hover:bg-red-100">🗑️ Xóa</button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Actions */}
-          <div className="flex gap-3 mt-4 pt-4 border-t">
+          <div className="flex gap-2 pt-2 border-t">
             <Link href={`/ga/${ga.id}`}
-              className="flex-1 bg-[#8B1A1A] text-white font-bold py-3 rounded-xl hover:bg-[#6B0F0F] transition text-sm text-center">
-              Xem đầy đủ + Mua ngay →
+              className="flex-1 bg-[#8B1A1A] text-white font-bold py-2.5 rounded-xl hover:bg-[#6B0F0F] transition text-sm text-center">
+              🐓 Xem đầy đủ + Mua ngay
             </Link>
             <button onClick={onClose}
-              className="px-6 border border-gray-300 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50 transition text-sm">
+              className="px-5 border border-gray-300 text-gray-600 font-bold py-2.5 rounded-xl hover:bg-gray-50 transition text-sm">
               Đóng
             </button>
           </div>
@@ -187,7 +291,7 @@ function GaCard({ ga, idx }: { ga: any; idx: number }) {
 
   return (
     <>
-      {showModal && <GaDetailModal ga={ga} onClose={() => setShowModal(false)} />}
+      {showModal && <GaDetailModal ga={ga} onClose={() => setShowModal(false)} onDeleted={() => setShowModal(false)} />}
       <div onClick={() => setShowModal(true)}
         className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer">
 
