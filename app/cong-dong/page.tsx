@@ -29,14 +29,16 @@ function getYoutubeId(raw: string): string | null {
 function timeAgo(dateStr: string): string {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (diff < 60) return 'vừa xong';
-  if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
-  return `${Math.floor(diff / 86400)} ngày trước`;
+  if (diff < 3600) return `${Math.floor(diff / 60)} phút`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} giờ`;
+  return `${Math.floor(diff / 86400)} ngày`;
 }
 
 function formatNum(n: number): string {
+  if (!n) return '0';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace('.0', '') + 'Tr';
   if (n >= 1000) return (n / 1000).toFixed(1).replace('.0', '') + 'K';
-  return String(n ?? 0);
+  return String(n);
 }
 
 // ============================================================
@@ -54,6 +56,7 @@ interface Post {
   share_count: number;
   report_count: number;
   image_url?: string;
+  image_urls?: string[];
   status: string;
   created_at: string;
   profiles?: { full_name: string; avatar_url: string };
@@ -76,28 +79,56 @@ interface Banner {
 }
 
 // ============================================================
-// POST CONTENT
+// MEDIA GRID — 1, 2, or 3 images like Facebook
 // ============================================================
-function PostContent({ text }: { text: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const lines = text.split('\n');
-  const isLong = lines.length > 4 || text.length > 220;
-  const preview = isLong && !expanded ? lines.slice(0, 4).join('\n').slice(0, 220) : text;
+function MediaGrid({ images }: { images: string[] }) {
+  const imgs = images.slice(0, 3);
+  if (imgs.length === 0) return null;
+
+  if (imgs.length === 1) {
+    return (
+      <div style={{ width: '100%', maxHeight: 300, overflow: 'hidden', background: '#000' }}>
+        <img
+          src={imgs[0]}
+          loading="lazy"
+          style={{ width: '100%', maxHeight: 300, objectFit: 'cover', display: 'block' }}
+          alt=""
+        />
+      </div>
+    );
+  }
+
+  if (imgs.length === 2) {
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, maxHeight: 240 }}>
+        {imgs.map((src, i) => (
+          <div key={i} style={{ overflow: 'hidden', background: '#000' }}>
+            <img src={src} loading="lazy" style={{ width: '100%', height: 240, objectFit: 'cover', display: 'block' }} alt="" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // 3 images: big left + 2 stacked right
   return (
-    <div style={{ padding: '0 12px 10px', fontSize: 14, lineHeight: 1.6 }}>
-      <div style={{ whiteSpace: 'pre-wrap' }}>{preview}{isLong && !expanded && '...'}</div>
-      {isLong && (
-        <button onClick={() => setExpanded(e => !e)}
-          style={{ background: 'none', border: 'none', color: '#c0392b', fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: '2px 0', marginTop: 2 }}>
-          {expanded ? '▲ Thu gọn' : '▼ Xem thêm'}
-        </button>
-      )}
+    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 2, maxHeight: 280 }}>
+      <div style={{ overflow: 'hidden', background: '#000' }}>
+        <img src={imgs[0]} loading="lazy" style={{ width: '100%', height: 280, objectFit: 'cover', display: 'block' }} alt="" />
+      </div>
+      <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr', gap: 2 }}>
+        {imgs.slice(1).map((src, i) => (
+          <div key={i} style={{ overflow: 'hidden', background: '#000' }}>
+            <img src={src} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} alt="" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
 // ============================================================
-// FLOATING VIDEO POPUP — mouse + touch drag, z cao
+// FLOATING VIDEO POPUP
 // ============================================================
 function FloatingVideoPopup({ ytId, onClose, startX, startY, popupW }: {
   ytId: string; onClose: () => void;
@@ -109,7 +140,6 @@ function FloatingVideoPopup({ ytId, onClose, startX, startY, popupW }: {
   const popupH = Math.round(popupW * 0.5625) + 36;
 
   useEffect(() => {
-    // Mouse drag
     function onMouseMove(e: MouseEvent) {
       if (!dragging.current) return;
       setPos({
@@ -118,8 +148,6 @@ function FloatingVideoPopup({ ytId, onClose, startX, startY, popupW }: {
       });
     }
     function onMouseUp() { dragging.current = false; }
-
-    // Touch drag
     function onTouchMove(e: TouchEvent) {
       if (!dragging.current) return;
       const t = e.touches[0];
@@ -130,7 +158,6 @@ function FloatingVideoPopup({ ytId, onClose, startX, startY, popupW }: {
       e.preventDefault();
     }
     function onTouchEnd() { dragging.current = false; }
-
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     window.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -143,42 +170,20 @@ function FloatingVideoPopup({ ytId, onClose, startX, startY, popupW }: {
     };
   }, [popupW, popupH]);
 
-  function startDragMouse(e: React.MouseEvent) {
-    dragging.current = true;
-    dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
-    e.preventDefault();
-  }
-
-  function startDragTouch(e: React.TouchEvent) {
-    dragging.current = true;
-    const t = e.touches[0];
-    dragOffset.current = { x: t.clientX - pos.x, y: t.clientY - pos.y };
-  }
-
   return (
     <div style={{
       position: 'fixed', left: pos.x, top: pos.y, width: popupW,
-      zIndex: 9999, borderRadius: 12, overflow: 'hidden',
-      boxShadow: '0 16px 48px rgba(0,0,0,0.65)', background: '#000',
+      zIndex: 9999, borderRadius: 10, overflow: 'hidden',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.6)', background: '#000',
     }}>
-      {/* Thanh kéo — hỗ trợ cả mouse và touch */}
       <div
-        onMouseDown={startDragMouse}
-        onTouchStart={startDragTouch}
-        style={{
-          height: 36, background: 'rgba(0,0,0,0.9)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '0 12px', cursor: 'grab', userSelect: 'none', touchAction: 'none',
-        }}
+        onMouseDown={e => { dragging.current = true; dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y }; e.preventDefault(); }}
+        onTouchStart={e => { dragging.current = true; const t = e.touches[0]; dragOffset.current = { x: t.clientX - pos.x, y: t.clientY - pos.y }; }}
+        style={{ height: 32, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', cursor: 'grab', userSelect: 'none', touchAction: 'none' }}
       >
-        <span style={{ color: '#888', fontSize: 11 }}>⠿ Kéo để di chuyển</span>
-        <button onClick={onClose} style={{
-          background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%',
-          color: '#fff', width: 24, height: 24, cursor: 'pointer', fontSize: 14,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>✕</button>
+        <span style={{ color: '#777', fontSize: 10 }}>⠿ Kéo</span>
+        <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', borderRadius: '50%', color: '#fff', width: 22, height: 22, cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
       </div>
-      {/* Video — mute=0, controls gốc YouTube */}
       <div style={{ paddingBottom: '56.25%', position: 'relative' }}>
         <iframe
           src={`https://www.youtube.com/embed/${ytId}?autoplay=1&mute=0&controls=1&loop=1&playlist=${ytId}&rel=0`}
@@ -192,49 +197,7 @@ function FloatingVideoPopup({ ytId, onClose, startX, startY, popupW }: {
 }
 
 // ============================================================
-// VIDEO SIDEBAR
-// ============================================================
-function VideoSidebar({ finalId, thumb, title, views }: {
-  finalId: string; thumb: string; title: string; views: number;
-}) {
-  const [popup, setPopup] = useState<{ x: number; y: number; w: number } | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-
-  function openPopup() {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const w = Math.min(480, window.innerWidth - 16);
-    const h = Math.round(w * 0.5625) + 36;
-    const x = Math.max(8, Math.min(rect.left, window.innerWidth - w - 8));
-    const y = Math.max(8, Math.min(rect.top + rect.height / 2 - h / 2, window.innerHeight - h - 8));
-    setPopup({ x, y, w });
-  }
-
-  return (
-    <>
-      {popup && <FloatingVideoPopup ytId={finalId} onClose={() => setPopup(null)} startX={popup.x} startY={popup.y} popupW={popup.w} />}
-      <div ref={ref} style={{ marginBottom: 10 }}>
-        <div onMouseEnter={openPopup} onClick={openPopup}
-          style={{ position: 'relative', borderRadius: 6, overflow: 'hidden', background: '#000', paddingBottom: '56.25%', cursor: 'pointer' }}>
-          <img src={thumb || `https://img.youtube.com/vi/${finalId}/mqdefault.jpg`}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} alt={title} />
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: 'rgba(0,0,0,0.55)', borderRadius: '50%', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13 }}>▶</div>
-          </div>
-          {views > 0 && (
-            <div style={{ position: 'absolute', bottom: 3, right: 5, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: 9, padding: '1px 4px', borderRadius: 3 }}>
-              ▶ {formatNum(views)}
-            </div>
-          )}
-        </div>
-        <p style={{ margin: '4px 0 0', fontSize: 11, fontWeight: 600, lineHeight: 1.35, color: '#333' }}>{title}</p>
-      </div>
-    </>
-  );
-}
-
-// ============================================================
-// VIDEO POST — trong feed
+// VIDEO POST — thumbnail + tap to float
 // ============================================================
 function VideoPost({ ytId }: { ytId: string }) {
   const [popup, setPopup] = useState<{ x: number; y: number; w: number } | null>(null);
@@ -243,25 +206,28 @@ function VideoPost({ ytId }: { ytId: string }) {
   function openPopup() {
     if (!ref.current) return;
     const rect = ref.current.getBoundingClientRect();
-    const w = Math.min(640, window.innerWidth - 16);
-    const h = Math.round(w * 0.5625) + 36;
-    const x = Math.max(8, Math.min(rect.left + rect.width / 2 - w / 2, window.innerWidth - w - 8));
-    const y = Math.max(8, Math.min(rect.top + rect.height / 2 - h / 2, window.innerHeight - h - 8));
+    const w = Math.min(560, window.innerWidth - 12);
+    const h = Math.round(w * 0.5625) + 32;
+    const x = Math.max(6, Math.min(rect.left + rect.width / 2 - w / 2, window.innerWidth - w - 6));
+    const y = Math.max(6, Math.min(rect.top + rect.height / 2 - h / 2, window.innerHeight - h - 6));
     setPopup({ x, y, w });
   }
 
   return (
     <>
       {popup && <FloatingVideoPopup ytId={ytId} onClose={() => setPopup(null)} startX={popup.x} startY={popup.y} popupW={popup.w} />}
-      <div ref={ref} onMouseEnter={openPopup} onClick={openPopup}
-        style={{ paddingBottom: '56.25%', position: 'relative', background: '#000', cursor: 'pointer' }}>
-        <img src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} alt="video" />
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: 52, height: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 22 }}>▶</div>
-        </div>
-        <div style={{ position: 'absolute', bottom: 6, left: 10, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 10, padding: '2px 7px', borderRadius: 4 }}>
-          👆 Nhấn để xem
+      <div ref={ref} onClick={openPopup}
+        style={{ paddingBottom: '52%', position: 'relative', background: '#111', cursor: 'pointer', maxHeight: 280, overflow: 'hidden' }}>
+        <img
+          src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+          loading="lazy"
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          alt="video"
+        />
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 48, height: 48, background: 'rgba(0,0,0,0.65)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 0, height: 0, borderStyle: 'solid', borderWidth: '9px 0 9px 18px', borderColor: 'transparent transparent transparent #fff', marginLeft: 3 }} />
+          </div>
         </div>
       </div>
     </>
@@ -269,107 +235,86 @@ function VideoPost({ ytId }: { ytId: string }) {
 }
 
 // ============================================================
-// POST MENU (3 chấm) — đúng actions
+// POST CONTENT — with expand/collapse
+// ============================================================
+function PostContent({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = text.length > 180 || text.split('\n').length > 3;
+  const preview = isLong && !expanded ? text.slice(0, 180) : text;
+
+  return (
+    <div style={{ padding: '6px 12px 8px', fontSize: 14, lineHeight: 1.5, color: '#050505' }}>
+      <span style={{ whiteSpace: 'pre-wrap' }}>{preview}</span>
+      {isLong && !expanded && '... '}
+      {isLong && (
+        <button onClick={() => setExpanded(e => !e)}
+          style={{ background: 'none', border: 'none', color: '#65676b', fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 0 }}>
+          {expanded ? 'Thu gọn' : 'Xem thêm'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// POST MENU
 // ============================================================
 function PostMenu({ post, currentUserId, onDelete, onReport }: {
-  post: Post;
-  currentUserId: string | null;
-  onDelete: () => void;
-  onReport: () => void;
+  post: Post; currentUserId: string | null; onDelete: () => void; onReport: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(post.noi_dung || '');
-  const [visibility, setVisibility] = useState(post.status === 'private' ? 'private' : 'public');
   const menuRef = useRef<HTMLDivElement>(null);
   const isAuthor = currentUserId === post.user_id;
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    function h(e: MouseEvent) { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false); }
+    if (open) document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
   async function handleEdit() {
     if (!editText.trim()) return;
     await supabase.from('posts').update({ noi_dung: editText.trim() }).eq('id', post.id);
-    setEditing(false);
-    setOpen(false);
-    window.location.reload();
+    setEditing(false); setOpen(false); window.location.reload();
   }
-
   async function handleDelete() {
-    if (!confirm('Bạn chắc chắn muốn xóa bài này?')) return;
+    if (!confirm('Bạn chắc chắn muốn xóa?')) return;
     await supabase.from('posts').delete().eq('id', post.id);
-    setOpen(false);
-    onDelete();
-  }
-
-  async function handleVisibility(v: string) {
-    setVisibility(v);
-    await supabase.from('posts').update({ status: v === 'private' ? 'private' : 'active' }).eq('id', post.id);
-    setOpen(false);
+    setOpen(false); onDelete();
   }
 
   return (
     <div ref={menuRef} style={{ position: 'relative' }}>
       <button onClick={() => setOpen(o => !o)}
-        style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 18, padding: '0 2px', lineHeight: 1 }}>
-        ⋯
+        style={{ background: '#f0f2f5', border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', fontSize: 18, color: '#65676b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        ···
       </button>
-
       {open && (
-        <div style={{
-          position: 'absolute', right: 0, top: 28, background: '#fff',
-          borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-          minWidth: 180, zIndex: 100, overflow: 'hidden',
-        }}>
+        <div style={{ position: 'absolute', right: 0, top: 36, background: '#fff', borderRadius: 8, boxShadow: '0 4px 20px rgba(0,0,0,0.18)', minWidth: 200, zIndex: 200, overflow: 'hidden' }}>
           {isAuthor ? (
             <>
-              <button onClick={() => { setEditing(true); setOpen(false); }}
-                style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-                ✏️ Chỉnh sửa bài viết
-              </button>
-              <button onClick={() => handleVisibility(visibility === 'public' ? 'private' : 'public')}
-                style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-                {visibility === 'public' ? '🔒 Chuyển riêng tư' : '🌐 Chuyển công khai'}
-              </button>
-              <div style={{ borderTop: '1px solid #f0f0f0' }} />
-              <button onClick={handleDelete}
-                style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 13, color: '#e74c3c', display: 'flex', alignItems: 'center', gap: 8 }}>
-                🗑️ Xóa bài viết
-              </button>
+              <MenuItem icon="✏️" label="Chỉnh sửa" onClick={() => { setEditing(true); setOpen(false); }} />
+              <MenuItem icon="🗑️" label="Xóa bài viết" onClick={handleDelete} danger />
             </>
           ) : (
-            <button onClick={() => { onReport(); setOpen(false); }}
-              style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-              ⚠️ Báo cáo bài viết
-            </button>
+            <MenuItem icon="⚠️" label="Báo cáo" onClick={() => { onReport(); setOpen(false); }} />
           )}
         </div>
       )}
-
-      {/* Modal chỉnh sửa */}
       {editing && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px' }}>
-          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 480, padding: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Chỉnh sửa bài viết</h3>
-              <button onClick={() => setEditing(false)} style={{ background: '#e4e6ea', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', fontSize: 16 }}>×</button>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 12px' }}>
+          <div style={{ background: '#fff', borderRadius: 10, width: '100%', maxWidth: 460, padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontWeight: 700, fontSize: 15 }}>Chỉnh sửa bài viết</span>
+              <button onClick={() => setEditing(false)} style={{ background: '#e4e6ea', border: 'none', borderRadius: '50%', width: 26, height: 26, cursor: 'pointer' }}>×</button>
             </div>
             <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={5}
-              style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '10px', fontSize: 14, resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button onClick={() => setEditing(false)}
-                style={{ flex: 1, padding: '10px', border: '1px solid #ddd', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 13 }}>
-                Hủy
-              </button>
-              <button onClick={handleEdit}
-                style={{ flex: 1, padding: '10px', border: 'none', borderRadius: 8, background: '#c0392b', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
-                Lưu
-              </button>
+              style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: 10, fontSize: 14, resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button onClick={() => setEditing(false)} style={{ flex: 1, padding: 9, border: '1px solid #ddd', borderRadius: 7, background: '#fff', cursor: 'pointer', fontSize: 13 }}>Hủy</button>
+              <button onClick={handleEdit} style={{ flex: 1, padding: 9, border: 'none', borderRadius: 7, background: '#c0392b', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>Lưu</button>
             </div>
           </div>
         </div>
@@ -378,8 +323,17 @@ function PostMenu({ post, currentUserId, onDelete, onReport }: {
   );
 }
 
+function MenuItem({ icon, label, onClick, danger }: { icon: string; label: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button onClick={onClick}
+      style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 13, color: danger ? '#e74c3c' : '#050505', display: 'flex', alignItems: 'center', gap: 10, fontWeight: 500 }}>
+      <span>{icon}</span>{label}
+    </button>
+  );
+}
+
 // ============================================================
-// POST CARD
+// POST CARD — compact, Facebook mobile style
 // ============================================================
 interface PostCardProps {
   post: Post; comments: Comment[]; liked: boolean; expanded: boolean;
@@ -397,77 +351,249 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
   const postText = post.noi_dung || post.content || '';
   const likeCount = post.like_count ?? post.likes ?? 0;
 
+  // Support multi-image
+  const images: string[] = post.image_urls?.length
+    ? post.image_urls.slice(0, 3)
+    : post.image_url ? [post.image_url] : [];
+
   return (
-    <div id={`post-${post.id}`} style={{ background: '#fff', borderRadius: 10, marginBottom: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+    <div id={`post-${post.id}`} style={{ background: '#fff', marginBottom: 8, boxShadow: '0 1px 0 rgba(0,0,0,0.08)' }}>
       {/* Header */}
-      <div style={{ padding: '12px 12px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ padding: '10px 12px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <img src={avatar} style={{ width: 38, height: 38, borderRadius: '50%', border: '2px solid #f0f2f5', flexShrink: 0 }} alt="" />
+          <img src={avatar}
+            style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #e4e6ea', flexShrink: 0, objectFit: 'cover' }}
+            loading="lazy" alt="" />
           <div>
-            <div style={{ fontWeight: 700, fontSize: 13 }}>{name}</div>
-            <div style={{ fontSize: 11, color: '#888' }}>{timeAgo(post.created_at)}</div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: '#050505', lineHeight: 1.2 }}>{name}</div>
+            <div style={{ fontSize: 11, color: '#65676b', marginTop: 1 }}>{timeAgo(post.created_at)} trước</div>
           </div>
         </div>
-        {/* Menu 3 chấm đúng */}
         <PostMenu post={post} currentUserId={currentUserId} onDelete={onDelete} onReport={onReport} />
       </div>
 
-      <PostContent text={postText} />
+      {/* Text */}
+      {postText.length > 0 && <PostContent text={postText} />}
 
-      {post.image_url && (
-        <img src={post.image_url} style={{ width: '100%', maxHeight: 360, objectFit: 'cover', display: 'block' }} alt="" />
+      {/* Media */}
+      {images.length > 0 && <MediaGrid images={images} />}
+      {ytId && !images.length && <VideoPost ytId={ytId} />}
+
+      {/* Counts */}
+      {(likeCount > 0 || post.comment_count > 0) && (
+        <div style={{ padding: '5px 12px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #e4e6ea' }}>
+          {likeCount > 0 && (
+            <span style={{ fontSize: 12, color: '#65676b', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <span style={{ background: 'linear-gradient(135deg,#c0392b,#e74c3c)', borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff' }}>👍</span>
+              {formatNum(likeCount)}
+            </span>
+          )}
+          {post.comment_count > 0 && (
+            <span style={{ fontSize: 12, color: '#65676b', marginLeft: 'auto' }}>{formatNum(post.comment_count)} bình luận</span>
+          )}
+        </div>
       )}
-      {ytId && <VideoPost ytId={ytId} />}
 
-      {/* Stats */}
-      <div style={{ padding: '6px 12px', display: 'flex', gap: 12, fontSize: 12, color: '#888', borderBottom: '1px solid #e4e6ea' }}>
-        <span>👍 {formatNum(likeCount)}</span>
-        <span>💬 {formatNum(post.comment_count)}</span>
-        <span>🔁 {formatNum(post.share_count)}</span>
-      </div>
-
-      {/* Actions */}
-      <div style={{ display: 'flex', padding: '2px 4px' }}>
+      {/* Action buttons */}
+      <div style={{ display: 'flex', borderBottom: expanded ? '1px solid #e4e6ea' : 'none' }}>
         {[
-          { icon: '👍', label: 'Thích', color: liked ? '#c0392b' : '#65676b', action: onLike },
-          { icon: '💬', label: 'Bình luận', color: '#65676b', action: onToggleComments },
-          { icon: '🔁', label: 'Chia sẻ', color: '#65676b', action: onShare },
+          { icon: liked ? '👍' : '👍', label: 'Thích', color: liked ? '#c0392b' : '#65676b', weight: liked ? 700 : 400, action: onLike },
+          { icon: '💬', label: 'Bình luận', color: '#65676b', weight: 400, action: onToggleComments },
+          { icon: '↗', label: 'Chia sẻ', color: '#65676b', weight: 400, action: onShare },
         ].map(btn => (
           <button key={btn.label} onClick={btn.action}
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '7px 2px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 6, fontSize: 12, fontWeight: 600, color: btn.color }}>
-            <span>{btn.icon}</span>
-            <span className="cgv-btn-label">{btn.label}</span>
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '7px 4px', border: 'none', background: liked && btn.label === 'Thích' ? '#fef0f0' : 'none', cursor: 'pointer', borderRadius: 0, fontSize: 13, fontWeight: btn.weight, color: btn.color, transition: 'background .15s' }}>
+            <span style={{ fontSize: btn.label === 'Chia sẻ' ? 16 : 15 }}>{btn.icon}</span>
+            <span>{btn.label}</span>
           </button>
         ))}
       </div>
 
-      {/* Comments */}
+      {/* Comments section */}
       {expanded && (
-        <div style={{ borderTop: '1px solid #e4e6ea', padding: '10px 12px' }}>
-          {comments.length === 0 && <p style={{ color: '#888', fontSize: 12, margin: '0 0 10px' }}>Chưa có bình luận nào</p>}
-          {comments.map(c => (
-            <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <img src={c.profiles?.avatar_url || `https://ui-avatars.com/api/?name=U&background=8B0000&color=fff`}
-                style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0 }} alt="" />
-              <div style={{ background: '#f0f2f5', borderRadius: 14, padding: '6px 12px' }}>
-                <div style={{ fontWeight: 700, fontSize: 12 }}>{c.profiles?.full_name || 'Người dùng'}</div>
-                <div style={{ fontSize: 13, marginTop: 2 }}>{c.content}</div>
-                <div style={{ fontSize: 10, color: '#888', marginTop: 3 }}>{timeAgo(c.created_at)}</div>
+        <div style={{ padding: '8px 12px 10px' }}>
+          {comments.length === 0 && (
+            <p style={{ color: '#8a8d91', fontSize: 12, margin: '0 0 8px', textAlign: 'center' }}>Chưa có bình luận</p>
+          )}
+          {comments.map(c => {
+            const cAvatar = c.profiles?.avatar_url || `https://ui-avatars.com/api/?name=U&background=8B0000&color=fff`;
+            return (
+              <div key={c.id} style={{ display: 'flex', gap: 7, marginBottom: 8 }}>
+                <img src={cAvatar} loading="lazy" style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} alt="" />
+                <div>
+                  <div style={{ background: '#f0f2f5', borderRadius: 14, padding: '6px 11px', display: 'inline-block', maxWidth: '100%' }}>
+                    <div style={{ fontWeight: 700, fontSize: 12, color: '#050505' }}>{c.profiles?.full_name || 'Người dùng'}</div>
+                    <div style={{ fontSize: 13, color: '#050505', marginTop: 1 }}>{c.content}</div>
+                  </div>
+                  <div style={{ fontSize: 10, color: '#8a8d91', marginTop: 2, paddingLeft: 4 }}>{timeAgo(c.created_at)} trước</div>
+                </div>
               </div>
-            </div>
-          ))}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <img src={currentUserAvatar} style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0 }} alt="" />
-            <div style={{ flex: 1, display: 'flex', gap: 6, background: '#f0f2f5', borderRadius: 20, padding: '5px 10px', alignItems: 'center' }}>
-              <input value={commentInput} onChange={e => onCommentChange(e.target.value)}
+            );
+          })}
+          {/* Input */}
+          <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 6 }}>
+            <img src={currentUserAvatar} loading="lazy" style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} alt="" />
+            <div style={{ flex: 1, background: '#f0f2f5', borderRadius: 18, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                value={commentInput}
+                onChange={e => onCommentChange(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && onCommentSubmit()}
                 placeholder="Viết bình luận..."
-                style={{ flex: 1, border: 'none', background: 'none', outline: 'none', fontSize: 13 }} />
-              <button onClick={onCommentSubmit} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>➤</button>
+                style={{ flex: 1, border: 'none', background: 'none', outline: 'none', fontSize: 13, color: '#050505' }}
+              />
+              <button onClick={onCommentSubmit}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c0392b', fontSize: 15, padding: 0, display: 'flex', alignItems: 'center' }}>
+                ➤
+              </button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// CREATE POST BAR — compact
+// ============================================================
+function CreatePostBar({ userAvatar, userName, onOpen }: { userAvatar: string; userName: string; onOpen: () => void }) {
+  return (
+    <div style={{ background: '#fff', padding: '8px 12px', marginBottom: 8, boxShadow: '0 1px 0 rgba(0,0,0,0.08)' }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <img src={userAvatar} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} alt="" />
+        <div onClick={onOpen}
+          style={{ flex: 1, background: '#f0f2f5', borderRadius: 20, padding: '8px 14px', cursor: 'pointer', color: '#65676b', fontSize: 14, border: '1px solid #e4e6ea' }}>
+          Bạn đang nghĩ gì? 🐓
+        </div>
+      </div>
+      <div style={{ display: 'flex', borderTop: '1px solid #e4e6ea', marginTop: 8, paddingTop: 4 }}>
+        <button onClick={onOpen}
+          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '5px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: '#65676b', fontWeight: 600 }}>
+          📷 <span>Ảnh/Video</span>
+        </button>
+        <button onClick={onOpen}
+          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '5px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: '#65676b', fontWeight: 600 }}>
+          ✍️ <span>Viết bài</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// SORT TABS
+// ============================================================
+function SortTabs({ value, onChange }: { value: 'newest' | 'hot'; onChange: (v: 'newest' | 'hot') => void }) {
+  return (
+    <div style={{ background: '#fff', padding: '6px 12px', marginBottom: 8, display: 'flex', gap: 6, boxShadow: '0 1px 0 rgba(0,0,0,0.08)' }}>
+      {([['newest', '🕐 Mới nhất'], ['hot', '🔥 Nổi bật']] as const).map(([v, l]) => (
+        <button key={v} onClick={() => onChange(v)}
+          style={{ padding: '5px 12px', borderRadius: 16, border: 'none', background: value === v ? '#fdf0f0' : '#f0f2f5', color: value === v ? '#c0392b' : '#65676b', fontWeight: value === v ? 700 : 500, fontSize: 12, cursor: 'pointer' }}>
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================
+// CREATE POST MODAL
+// ============================================================
+function CreatePostModal({ user, userAvatar, userName, onSubmit, onClose }: {
+  user: any; userAvatar: string; userName: string;
+  onSubmit: (content: string, youtube: string, images: File[]) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [postContent, setPostContent] = useState('');
+  const [postYoutube, setPostYoutube] = useState('');
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  function handleImages(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []).slice(0, 3);
+    setImageFiles(files);
+    setImagePreviews(files.map(f => URL.createObjectURL(f)));
+  }
+
+  function removeImage(i: number) {
+    setImageFiles(prev => prev.filter((_, idx) => idx !== i));
+    setImagePreviews(prev => prev.filter((_, idx) => idx !== i));
+  }
+
+  async function handleSubmit() {
+    if (!postContent.trim()) return;
+    setSubmitting(true);
+    await onSubmit(postContent, postYoutube, imageFiles);
+    setSubmitting(false);
+  }
+
+  useEffect(() => {
+    function h(e: MouseEvent) { if (popupRef.current && !popupRef.current.contains(e.target as Node)) onClose(); }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
+      <div ref={popupRef} style={{ background: '#fff', borderRadius: 10, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid #e4e6ea', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+          <span style={{ fontWeight: 700, fontSize: 16, color: '#050505' }}>Tạo bài viết</span>
+          <button onClick={onClose} style={{ background: '#e4e6ea', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+        </div>
+
+        <div style={{ padding: '12px 14px' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <img src={userAvatar} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} alt="" />
+            <span style={{ fontWeight: 600, fontSize: 14, color: '#050505' }}>{userName}</span>
+          </div>
+
+          <textarea
+            value={postContent}
+            onChange={e => setPostContent(e.target.value)}
+            placeholder="Bạn đang nghĩ gì? 🐓"
+            autoFocus
+            style={{ width: '100%', minHeight: 100, border: 'none', outline: 'none', resize: 'none', fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box', color: '#050505', lineHeight: 1.5 }}
+          />
+
+          {/* Image previews */}
+          {imagePreviews.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: imagePreviews.length === 1 ? '1fr' : '1fr 1fr', gap: 4, marginTop: 8, borderRadius: 8, overflow: 'hidden' }}>
+              {imagePreviews.map((src, i) => (
+                <div key={i} style={{ position: 'relative' }}>
+                  <img src={src} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} alt="" />
+                  <button onClick={() => removeImage(i)}
+                    style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.55)', color: '#fff', border: 'none', borderRadius: '50%', width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add media */}
+          <div style={{ border: '1px solid #e4e6ea', borderRadius: 8, padding: '10px 12px', marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#050505' }}>Thêm vào bài viết</span>
+            <button onClick={() => fileInputRef.current?.click()}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, padding: '0 4px' }}>📷</button>
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleImages} />
+
+          <input
+            value={postYoutube}
+            onChange={e => setPostYoutube(e.target.value)}
+            placeholder="🎬 Link YouTube (không bắt buộc)"
+            style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginTop: 8, boxSizing: 'border-box', outline: 'none', color: '#555' }}
+          />
+
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || !postContent.trim()}
+            style={{ width: '100%', marginTop: 10, padding: '11px', background: !postContent.trim() || submitting ? '#bcc0c4' : '#c0392b', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: postContent.trim() && !submitting ? 'pointer' : 'not-allowed' }}>
+            {submitting ? 'Đang đăng...' : 'Đăng'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -483,20 +609,12 @@ export default function CongDongPage() {
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
   const [showPopup, setShowPopup] = useState(false);
-  const [postContent, setPostContent] = useState('');
-  const [postYoutube, setPostYoutube] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'newest' | 'hot'>('newest');
   const [hotPosts, setHotPosts] = useState<Post[]>([]);
   const [featuredVideos, setFeaturedVideos] = useState<any[]>([]);
   const [topSuKe, setTopSuKe] = useState<any[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const popupRef = useRef<HTMLDivElement>(null);
-
   const bannerColors = ['#7B1818', '#1a3a6e', '#4a1a00'];
   const bannerEmojis = ['💊', '🥚', '🌾'];
 
@@ -507,19 +625,12 @@ export default function CongDongPage() {
   useEffect(() => { fetchSidebarData(); }, []);
 
   async function fetchSidebarData() {
-    const { data: hotData } = await supabase.from('posts')
-      .select('id, noi_dung, like_count, likes')
-      .eq('status', 'active').order('like_count', { ascending: false }).limit(5);
+    const { data: hotData } = await supabase.from('posts').select('id, noi_dung, like_count, likes').eq('status', 'active').order('like_count', { ascending: false }).limit(5);
     if (hotData) setHotPosts(hotData as Post[]);
-
     const { data: vidData } = await supabase.from('videos').select('*').limit(5);
     if (vidData) setFeaturedVideos(vidData);
-
-    const { data: suKeData } = await supabase.from('profiles')
-      .select('id, username, avatar_url, trust_score')
-      .order('trust_score', { ascending: false }).limit(5);
+    const { data: suKeData } = await supabase.from('profiles').select('id, username, avatar_url, trust_score').order('trust_score', { ascending: false }).limit(5);
     if (suKeData) setTopSuKe(suKeData);
-
     const { data: bannerData } = await supabase.from('banners').select('*').order('vi_tri');
     if (bannerData && bannerData.length > 0) setBanners(bannerData);
   }
@@ -527,15 +638,12 @@ export default function CongDongPage() {
   async function fetchPosts() {
     setLoading(true);
     let query = supabase.from('posts').select('*').eq('status', 'active');
-    query = sortBy === 'newest'
-      ? query.order('created_at', { ascending: false })
-      : query.order('like_count', { ascending: false });
+    query = sortBy === 'newest' ? query.order('created_at', { ascending: false }) : query.order('like_count', { ascending: false });
     const { data, error } = await query.limit(30);
     if (error) { console.error(error.message); setLoading(false); return; }
     if (data && data.length > 0) {
       const userIds = [...new Set(data.map((p: any) => p.user_id))];
-      const { data: profilesData } = await supabase.from('profiles')
-        .select('id, full_name, avatar_url').in('id', userIds);
+      const { data: profilesData } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', userIds);
       const profileMap: Record<string, any> = {};
       profilesData?.forEach((p: any) => { profileMap[p.id] = p; });
       setPosts(data.map((p: any) => ({ ...p, profiles: profileMap[p.user_id] || null })) as Post[]);
@@ -544,61 +652,59 @@ export default function CongDongPage() {
   }
 
   async function fetchComments(postId: string) {
-    const { data } = await supabase.from('comments')
-      .select('*, profiles(full_name, avatar_url)')
-      .eq('post_id', postId).order('created_at', { ascending: true });
+    const { data } = await supabase.from('comments').select('*, profiles(full_name, avatar_url)').eq('post_id', postId).order('created_at', { ascending: true });
     if (data) setComments(prev => ({ ...prev, [postId]: data as Comment[] }));
   }
 
-  async function submitPost() {
-    if (!postContent.trim() || !user) return;
-    setSubmitting(true);
-    let cleanYoutube = postYoutube.trim();
+  async function handleSubmitPost(content: string, youtube: string, images: File[]) {
+    if (!user) return;
+    let cleanYoutube = youtube.trim();
     if (cleanYoutube.includes('<iframe')) {
       const m = cleanYoutube.match(/src=["']([^"']+)["']/);
       cleanYoutube = m ? m[1] : '';
     }
-    let uploadedImageUrl = '';
-    if (imageFile) {
-      const ext = imageFile.name.split('.').pop();
-      const fileName = `posts/${Date.now()}.${ext}`;
-      const { data: up, error: upErr } = await supabase.storage.from('images').upload(fileName, imageFile, { upsert: true });
+
+    const uploadedUrls: string[] = [];
+    for (const file of images.slice(0, 3)) {
+      const ext = file.name.split('.').pop();
+      const fileName = `posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { data: up, error: upErr } = await supabase.storage.from('images').upload(fileName, file, { upsert: true });
       if (!upErr && up) {
         const { data: urlData } = supabase.storage.from('images').getPublicUrl(fileName);
-        uploadedImageUrl = urlData.publicUrl;
+        uploadedUrls.push(urlData.publicUrl);
       }
     }
+
     const { data, error } = await supabase.from('posts').insert({
-      user_id: user.id, noi_dung: postContent.trim(), youtube_url: cleanYoutube,
-      image_url: uploadedImageUrl || null, comment_count: 0, share_count: 0, report_count: 0, status: 'active',
+      user_id: user.id, noi_dung: content.trim(), youtube_url: cleanYoutube,
+      image_url: uploadedUrls[0] || null,
+      image_urls: uploadedUrls.length > 0 ? uploadedUrls : null,
+      comment_count: 0, share_count: 0, report_count: 0, status: 'active',
     }).select().single();
-    if (error) { alert(`❌ Lỗi: ${error.message}`); setSubmitting(false); return; }
+
+    if (error) { alert(`❌ Lỗi: ${error.message}`); return; }
     if (data) {
       setPosts(prev => [{
-        ...data, noi_dung: postContent.trim(), image_url: uploadedImageUrl || null, like_count: 0,
+        ...data, noi_dung: content.trim(),
+        image_url: uploadedUrls[0] || null, image_urls: uploadedUrls, like_count: 0,
         profiles: { full_name: user.user_metadata?.full_name || 'Bạn', avatar_url: user.user_metadata?.avatar_url || '' },
       } as Post, ...prev]);
-      setPostContent(''); setPostYoutube(''); setImageFile(null); setImagePreview(''); setShowPopup(false);
+      setShowPopup(false);
     }
-    setSubmitting(false);
   }
 
   async function likePost(postId: string) {
     if (!user) return;
     const already = likedPosts[postId];
     setLikedPosts(prev => ({ ...prev, [postId]: !already }));
-    setPosts(prev => prev.map(p =>
-      p.id === postId ? { ...p, like_count: (p.like_count ?? p.likes ?? 0) + (already ? -1 : 1) } : p
-    ));
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, like_count: (p.like_count ?? 0) + (already ? -1 : 1) } : p));
     await supabase.rpc('toggle_like', { post_id: postId, delta: already ? -1 : 1 });
   }
 
   async function submitComment(postId: string) {
     const text = commentInputs[postId]?.trim();
     if (!text || !user) return;
-    const { data } = await supabase.from('comments')
-      .insert({ post_id: postId, user_id: user.id, content: text })
-      .select('*, profiles(full_name, avatar_url)').single();
+    const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: user.id, content: text }).select('*, profiles(full_name, avatar_url)').single();
     if (data) {
       setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), data as Comment] }));
       setPosts(prev => prev.map(p => p.id === postId ? { ...p, comment_count: p.comment_count + 1 } : p));
@@ -606,8 +712,10 @@ export default function CongDongPage() {
     }
   }
 
-  function deletePost(postId: string) {
-    setPosts(prev => prev.filter(p => p.id !== postId));
+  function toggleComments(postId: string) {
+    const next = !expandedComments[postId];
+    setExpandedComments(prev => ({ ...prev, [postId]: next }));
+    if (next && !comments[postId]) fetchComments(postId);
   }
 
   function sharePost(postId: string) {
@@ -621,74 +729,30 @@ export default function CongDongPage() {
     alert('Đã báo cáo. Cảm ơn!');
   }
 
-  function toggleComments(postId: string) {
-    const next = !expandedComments[postId];
-    setExpandedComments(prev => ({ ...prev, [postId]: next }));
-    if (next && !comments[postId]) fetchComments(postId);
-  }
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) setShowPopup(false);
-    }
-    if (showPopup) document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [showPopup]);
-
   const userAvatar = user?.user_metadata?.avatar_url
     || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.user_metadata?.full_name || 'U')}&background=8B0000&color=fff`;
   const userName = user?.user_metadata?.full_name || 'Bạn';
   const currentUserId = user?.id ?? null;
 
   return (
-    <div style={{ backgroundColor: '#f0f2f5', minHeight: '100vh', fontFamily: "'Segoe UI', sans-serif" }}>
+    <div style={{ backgroundColor: '#f0f2f5', minHeight: '100vh', fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
 
-      {/* ── POPUP ĐĂNG BÀI ── */}
       {showPopup && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 12px' }}>
-          <div ref={popupRef} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 520, padding: 20, boxShadow: '0 8px 32px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, borderBottom: '1px solid #e4e6ea', paddingBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Tạo bài viết</h3>
-              <button onClick={() => setShowPopup(false)} style={{ background: '#e4e6ea', border: 'none', borderRadius: '50%', width: 30, height: 30, cursor: 'pointer', fontSize: 17 }}>×</button>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <img src={userAvatar} style={{ width: 38, height: 38, borderRadius: '50%' }} alt="" />
-              <span style={{ fontWeight: 600, fontSize: 14 }}>{userName}</span>
-            </div>
-            <textarea value={postContent} onChange={e => setPostContent(e.target.value)}
-              placeholder="Bạn đang nghĩ gì về gà của mình? 🐓"
-              style={{ width: '100%', minHeight: 100, border: 'none', outline: 'none', resize: 'none', fontSize: 15, fontFamily: 'inherit', boxSizing: 'border-box' }} />
-            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) { setImageFile(f); setImagePreview(URL.createObjectURL(f)); } }} />
-            {imagePreview ? (
-              <div style={{ position: 'relative', marginTop: 8 }}>
-                <img src={imagePreview} style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8 }} alt="" />
-                <button onClick={() => { setImageFile(null); setImagePreview(''); }}
-                  style={{ position: 'absolute', top: 5, right: 5, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 13 }}>×</button>
-              </div>
-            ) : (
-              <button onClick={() => fileInputRef.current?.click()}
-                style={{ width: '100%', marginTop: 8, padding: '8px', border: '1.5px dashed #ddd', borderRadius: 8, background: '#fafafa', color: '#888', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                📷 Thêm ảnh
-              </button>
-            )}
-            <input value={postYoutube} onChange={e => setPostYoutube(e.target.value)}
-              placeholder="🎬 Dán link YouTube (không bắt buộc)"
-              style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '9px 12px', fontSize: 13, marginTop: 8, boxSizing: 'border-box', outline: 'none', color: '#555' }} />
-            <button onClick={submitPost} disabled={submitting || !postContent.trim()}
-              style={{ width: '100%', marginTop: 12, padding: '12px', background: submitting ? '#e88' : postContent.trim() ? '#c0392b' : '#ccc', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: postContent.trim() && !submitting ? 'pointer' : 'not-allowed' }}>
-              {submitting ? '⏳ Đang đăng...' : '🚀 Đăng bài'}
-            </button>
-          </div>
-        </div>
+        <CreatePostModal
+          user={user}
+          userAvatar={userAvatar}
+          userName={userName}
+          onSubmit={handleSubmitPost}
+          onClose={() => setShowPopup(false)}
+        />
       )}
 
-      {/* ── LAYOUT 3 CỘT (desktop) / 1 CỘT (mobile) ── */}
-      <div className="cgv-grid" style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: '240px 1fr 280px', gap: 16, padding: '12px 10px' }}>
+      {/* 3-column desktop / 1-column mobile */}
+      <div className="cgv-grid" style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: '240px 1fr 280px', gap: 16, padding: '12px 10px', alignItems: 'start' }}>
 
-        {/* CỘT TRÁI */}
-        <aside className="cgv-left" style={{ position: 'sticky', top: 72, height: 'fit-content' }}>
-          <div style={{ background: '#fff', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 10 }}>
+        {/* LEFT SIDEBAR */}
+        <aside className="cgv-left" style={{ position: 'sticky', top: 60, height: 'fit-content' }}>
+          <div style={{ background: '#fff', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', marginBottom: 10 }}>
             {[
               { href: '/', icon: '🏠', label: 'Trang chủ' },
               { href: '/cong-dong', icon: '👥', label: 'Cộng đồng', active: true },
@@ -696,96 +760,84 @@ export default function CongDongPage() {
               { href: '/thu-vien', icon: '🎬', label: 'Video' },
               { href: '/thu-vien', icon: '📚', label: 'Kiến thức' },
             ].map((item, idx) => (
-              <Link key={`nav-${idx}`} href={item.href} style={{ textDecoration: 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', background: item.active ? '#fdf0f0' : 'transparent', borderLeft: item.active ? '3px solid #c0392b' : '3px solid transparent', color: item.active ? '#c0392b' : '#333', fontWeight: item.active ? 700 : 400 }}>
-                  <span style={{ fontSize: 16 }}>{item.icon}</span>
-                  <span style={{ fontSize: 13 }}>{item.label}</span>
+              <Link key={idx} href={item.href} style={{ textDecoration: 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: item.active ? '#fdf0f0' : 'transparent', borderLeft: `3px solid ${item.active ? '#c0392b' : 'transparent'}`, color: item.active ? '#c0392b' : '#333', fontWeight: item.active ? 700 : 400, fontSize: 13 }}>
+                  <span style={{ fontSize: 15 }}>{item.icon}</span>
+                  {item.label}
                 </div>
               </Link>
             ))}
           </div>
-          <div style={{ background: '#fff', borderRadius: 10, padding: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ fontWeight: 700, color: '#c0392b', fontSize: 12, marginBottom: 10 }}>🏆 Top sự kê uy tín</div>
-            {topSuKe.length === 0
-              ? <p style={{ color: '#aaa', fontSize: 12 }}>Đang tải...</p>
-              : topSuKe.map((sk, i) => {
-                const skName = sk.username || 'Người dùng';
-                const av = sk.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(skName)}&background=8B0000&color=fff`;
-                return (
-                  <Link key={sk.id} href={`/ho-so/${sk.id}`} style={{ textDecoration: 'none' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '3px 4px', borderRadius: 6 }}>
-                      <div style={{ position: 'relative', flexShrink: 0 }}>
-                        <img src={av} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} alt={skName} />
-                        {i === 0 && <span style={{ position: 'absolute', top: -3, right: -3, fontSize: 10 }}>👑</span>}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>{skName}</div>
-                        {sk.trust_score > 0 && <div style={{ fontSize: 10, color: '#c0392b' }}>⭐ {sk.trust_score}</div>}
-                      </div>
+          <div style={{ background: '#fff', borderRadius: 10, padding: 12, boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+            <div style={{ fontWeight: 700, color: '#c0392b', fontSize: 12, marginBottom: 8 }}>🏆 Top sự kê uy tín</div>
+            {topSuKe.map((sk, i) => {
+              const skName = sk.username || 'Người dùng';
+              const av = sk.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(skName)}&background=8B0000&color=fff`;
+              return (
+                <Link key={sk.id} href={`/ho-so/${sk.id}`} style={{ textDecoration: 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 7 }}>
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <img src={av} style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover' }} alt={skName} />
+                      {i === 0 && <span style={{ position: 'absolute', top: -3, right: -3, fontSize: 9 }}>👑</span>}
                     </div>
-                  </Link>
-                );
-              })
-            }
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#333' }}>{skName}</div>
+                      {sk.trust_score > 0 && <div style={{ fontSize: 10, color: '#c0392b' }}>⭐ {sk.trust_score}</div>}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </aside>
 
-        {/* CỘT GIỮA */}
+        {/* CENTER FEED */}
         <main style={{ minWidth: 0 }}>
-          <div style={{ background: '#fff', borderRadius: 10, padding: 12, marginBottom: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src={userAvatar} style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0 }} alt="" />
-              <div onClick={() => user ? setShowPopup(true) : alert('Vui lòng đăng nhập!')}
-                style={{ flex: 1, background: '#f0f2f5', borderRadius: 20, padding: '9px 14px', cursor: 'pointer', color: '#888', fontSize: 13, border: '1px solid #e4e6ea', minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                Bạn đang nghĩ gì? 🐓
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10, paddingTop: 10, borderTop: '1px solid #e4e6ea' }}>
-              <button onClick={() => user ? setShowPopup(true) : alert('Vui lòng đăng nhập!')}
-                style={{ background: '#c0392b', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-                ✍️ Viết bài
-              </button>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 7, marginBottom: 10 }}>
-            {([['newest', '🕐 Mới nhất'], ['hot', '🔥 Nổi bật']] as const).map(([v, l]) => (
-              <button key={v} onClick={() => setSortBy(v)}
-                style={{ padding: '6px 14px', borderRadius: 18, border: 'none', background: sortBy === v ? '#c0392b' : '#fff', color: sortBy === v ? '#fff' : '#555', fontWeight: 600, fontSize: 12, cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                {l}
-              </button>
-            ))}
-          </div>
+          <CreatePostBar
+            userAvatar={userAvatar}
+            userName={userName}
+            onOpen={() => user ? setShowPopup(true) : alert('Vui lòng đăng nhập!')}
+          />
+          <SortTabs value={sortBy} onChange={setSortBy} />
 
           {loading ? (
-            <div style={{ background: '#fff', borderRadius: 10, padding: 32, textAlign: 'center', color: '#888', fontSize: 13 }}>⏳ Đang tải...</div>
+            <div style={{ background: '#fff', padding: 28, textAlign: 'center', color: '#8a8d91', fontSize: 13 }}>
+              <div style={{ width: 28, height: 28, border: '3px solid #e4e6ea', borderTop: '3px solid #c0392b', borderRadius: '50%', margin: '0 auto 8px', animation: 'spin 0.8s linear infinite' }} />
+              Đang tải bài viết...
+            </div>
           ) : posts.length === 0 ? (
-            <div style={{ background: '#fff', borderRadius: 10, padding: 40, textAlign: 'center' }}>
-              <div style={{ fontSize: 40, marginBottom: 10 }}>📝</div>
-              <p style={{ color: '#888', marginBottom: 12, fontSize: 14 }}>Chưa có bài viết nào</p>
+            <div style={{ background: '#fff', padding: 40, textAlign: 'center', borderRadius: 10 }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>📝</div>
+              <p style={{ color: '#8a8d91', marginBottom: 12, fontSize: 14 }}>Chưa có bài viết nào</p>
               <button onClick={() => setShowPopup(true)} style={{ background: '#c0392b', color: '#fff', border: 'none', borderRadius: 7, padding: '9px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
                 Viết bài đầu tiên
               </button>
             </div>
           ) : posts.map(post => (
             <PostCard
-              key={post.id} post={post} comments={comments[post.id] || []}
-              liked={!!likedPosts[post.id]} expanded={!!expandedComments[post.id]}
-              commentInput={commentInputs[post.id] || ''} currentUserAvatar={userAvatar}
+              key={post.id}
+              post={post}
+              comments={comments[post.id] || []}
+              liked={!!likedPosts[post.id]}
+              expanded={!!expandedComments[post.id]}
+              commentInput={commentInputs[post.id] || ''}
+              currentUserAvatar={userAvatar}
               currentUserId={currentUserId}
-              onLike={() => likePost(post.id)} onToggleComments={() => toggleComments(post.id)}
+              onLike={() => likePost(post.id)}
+              onToggleComments={() => toggleComments(post.id)}
               onCommentChange={v => setCommentInputs(prev => ({ ...prev, [post.id]: v }))}
               onCommentSubmit={() => submitComment(post.id)}
-              onShare={() => sharePost(post.id)} onReport={() => reportPost(post.id)}
-              onDelete={() => deletePost(post.id)}
+              onShare={() => sharePost(post.id)}
+              onReport={() => reportPost(post.id)}
+              onDelete={() => setPosts(prev => prev.filter(p => p.id !== post.id))}
             />
           ))}
         </main>
 
-        {/* CỘT PHẢI */}
-        <aside className="cgv-right" style={{ position: 'sticky', top: 72, height: 'fit-content' }}>
-          <div style={{ background: '#fff', borderRadius: 10, padding: 12, marginBottom: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>🎬 Video nổi bật</div>
+        {/* RIGHT SIDEBAR */}
+        <aside className="cgv-right" style={{ position: 'sticky', top: 60, height: 'fit-content' }}>
+          <div style={{ background: '#fff', borderRadius: 10, padding: 12, marginBottom: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>🎬 Video nổi bật</div>
             {featuredVideos.length === 0
               ? <p style={{ color: '#aaa', fontSize: 12 }}>Chưa có video</p>
               : featuredVideos.map((v: any) => {
@@ -793,30 +845,38 @@ export default function CongDongPage() {
                 const ytId = getYoutubeId(ytRaw);
                 if (!ytId) return null;
                 const title = v.tieu_de || v.title || v.ten || 'Video';
-                const views = v.luot_xem || v.views || v.view_count || 0;
                 const thumb = v.thumbnail || v.anh_dai_dien || v.image_url || '';
-                return <VideoSidebar key={v.id} finalId={ytId} thumb={thumb} title={title} views={views} />;
-              })
-            }
-          </div>
-
-          <div style={{ background: '#fff', borderRadius: 10, padding: 12, marginBottom: 10, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: '#c0392b', marginBottom: 10 }}>🔥 Bài viết hot</div>
-            {hotPosts.length === 0
-              ? <p style={{ color: '#aaa', fontSize: 12 }}>Chưa có bài viết</p>
-              : hotPosts.map(p => {
-                const text = p.noi_dung || p.content || '';
-                const preview = text.length > 60 ? text.slice(0, 60) + '...' : text;
                 return (
-                  <div key={p.id}
-                    style={{ display: 'flex', alignItems: 'flex-start', gap: 5, marginBottom: 8, cursor: 'pointer' }}
-                    onClick={() => document.getElementById(`post-${p.id}`)?.scrollIntoView({ behavior: 'smooth' })}>
-                    <span style={{ color: '#c0392b', marginTop: 2, flexShrink: 0 }}>▪</span>
-                    <span style={{ fontSize: 12, color: '#333', lineHeight: 1.4 }}>{preview}</span>
+                  <div key={v.id} style={{ marginBottom: 8 }}>
+                    <div style={{ position: 'relative', borderRadius: 6, overflow: 'hidden', background: '#000', paddingBottom: '56.25%' }}>
+                      <img src={thumb || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
+                        loading="lazy"
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} alt={title} />
+                      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ background: 'rgba(0,0,0,0.55)', borderRadius: '50%', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ width: 0, height: 0, borderStyle: 'solid', borderWidth: '5px 0 5px 10px', borderColor: 'transparent transparent transparent #fff', marginLeft: 2 }} />
+                        </div>
+                      </div>
+                    </div>
+                    <p style={{ margin: '3px 0 0', fontSize: 11, fontWeight: 600, lineHeight: 1.3, color: '#333' }}>{title}</p>
                   </div>
                 );
               })
             }
+          </div>
+
+          <div style={{ background: '#fff', borderRadius: 10, padding: 12, marginBottom: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: '#c0392b', marginBottom: 8 }}>🔥 Bài viết hot</div>
+            {hotPosts.map(p => {
+              const text = p.noi_dung || p.content || '';
+              return (
+                <div key={p.id} onClick={() => document.getElementById(`post-${p.id}`)?.scrollIntoView({ behavior: 'smooth' })}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 5, marginBottom: 7, cursor: 'pointer' }}>
+                  <span style={{ color: '#c0392b', flexShrink: 0, marginTop: 2 }}>▪</span>
+                  <span style={{ fontSize: 12, color: '#333', lineHeight: 1.4 }}>{text.length > 55 ? text.slice(0, 55) + '...' : text}</span>
+                </div>
+              );
+            })}
           </div>
 
           {(banners.length > 0 ? banners : [
@@ -825,9 +885,9 @@ export default function CongDongPage() {
             { vi_tri: 3, tieu_de: 'Thức ăn', tieu_de_phu: 'Cho gà đá', link: '' },
           ] as Banner[]).map((b, idx) => {
             const inner = (
-              <div style={{ background: bannerColors[idx] || '#7B1818', borderRadius: 8, padding: '11px 12px', marginBottom: 8, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 22, flexShrink: 0 }}>{bannerEmojis[idx] || '📢'}</span>
-                <div style={{ minWidth: 0 }}>
+              <div style={{ background: bannerColors[idx] || '#7B1818', borderRadius: 8, padding: '10px 12px', marginBottom: 7, color: '#fff', display: 'flex', alignItems: 'center', gap: 9 }}>
+                <span style={{ fontSize: 20, flexShrink: 0 }}>{bannerEmojis[idx] || '📢'}</span>
+                <div>
                   <div style={{ fontWeight: 700, fontSize: 12 }}>{b.tieu_de}</div>
                   {b.tieu_de_phu && <div style={{ fontSize: 10, opacity: 0.8, marginTop: 1 }}>{b.tieu_de_phu}</div>}
                 </div>
@@ -840,32 +900,18 @@ export default function CongDongPage() {
         </aside>
       </div>
 
-      {/* ── CSS RESPONSIVE ── */}
       <style>{`
-        /* Tablet */
-        @media (max-width: 1100px) {
-          .cgv-grid { grid-template-columns: 180px 1fr 220px !important; gap: 10px !important; padding: 10px 8px !important; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 1024px) {
+          .cgv-grid { grid-template-columns: 180px 1fr 220px !important; gap: 10px !important; padding: 8px !important; }
         }
-        @media (max-width: 900px) {
-          .cgv-grid { grid-template-columns: 140px 1fr 160px !important; gap: 7px !important; padding: 8px 5px !important; }
-          .cgv-left > div, .cgv-right > div { padding: 10px !important; }
-        }
-        /* Mobile — 1 cột, ẩn sidebar trái và phải */
-        @media (max-width: 680px) {
-          .cgv-grid {
-            grid-template-columns: 1fr !important;
-            gap: 0 !important;
-            padding: 6px 0 !important;
-          }
+        @media (max-width: 820px) {
+          .cgv-grid { grid-template-columns: 1fr !important; gap: 0 !important; padding: 0 !important; }
           .cgv-left { display: none !important; }
           .cgv-right { display: none !important; }
-          main {
-            width: 100% !important;
-            padding: 0 !important;
-          }
+          main { border-radius: 0 !important; }
         }
-        .cgv-btn-label { display: none; }
-        @media (min-width: 480px) { .cgv-btn-label { display: inline; } }
       `}</style>
     </div>
   );
