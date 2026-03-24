@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// ===== TỪ ĐIỂN 92 VẢY ĐẦY ĐỦ =====
+// ===== TỪ ĐIỂN 92 VẢY =====
 const VAY_DATABASE = {
   tot: {
     'Án Thiên': { vi_tri: 'vảy lớn sát đầu gối trên cao nhất hàng Thành/Quách', y_nghia: 'Sức lực bền bỉ, tránh né tài tình, ra đòn chính xác. Rất tốt.' },
@@ -47,41 +47,25 @@ const VAY_DATABASE = {
   },
 };
 
-// ===== MAPPING LOGIC =====
-function mapVayFromDescription(moTa: string): {
-  ten: string | null;
-  loai: 'tot' | 'xau' | 'thuong';
-  y_nghia: string;
-  tin_cay: number;
-} {
+function mapVayFromDescription(moTa: string) {
   const obs = moTa.toLowerCase();
-
-  // Kiểm tra từng vảy trong database
   for (const [ten, data] of Object.entries(VAY_DATABASE.tot)) {
-    const tenLower = ten.toLowerCase();
-    if (obs.includes(tenLower)) {
-      const tinCay = obs.includes('rõ') || obs.includes('xác định') || obs.includes('thấy rõ') ? 85
+    if (obs.includes(ten.toLowerCase())) {
+      const tinCay = obs.includes('rõ') || obs.includes('xác định') ? 85
         : obs.includes('dấu hiệu') || obs.includes('nghi') ? 55 : 40;
-      return { ten, loai: 'tot', y_nghia: data.y_nghia, tin_cay: tinCay };
+      return { ten, loai: 'tot' as const, y_nghia: data.y_nghia, tin_cay: tinCay };
     }
-    // Kiểm tra vị trí mô tả khớp
     const viTriWords = data.vi_tri.toLowerCase().split(' ').filter(w => w.length > 4);
-    const matchCount = viTriWords.filter(w => obs.includes(w)).length;
-    if (matchCount >= 3) {
-      return { ten, loai: 'tot', y_nghia: data.y_nghia, tin_cay: 50 };
+    if (viTriWords.filter(w => obs.includes(w)).length >= 3) {
+      return { ten, loai: 'tot' as const, y_nghia: data.y_nghia, tin_cay: 50 };
     }
   }
-
   for (const [ten, data] of Object.entries(VAY_DATABASE.xau)) {
     if (obs.includes(ten.toLowerCase())) {
-      return { ten, loai: 'xau', y_nghia: data.y_nghia, tin_cay: 75 };
+      return { ten, loai: 'xau' as const, y_nghia: data.y_nghia, tin_cay: 75 };
     }
   }
-
-  return {
-    ten: null, loai: 'thuong', tin_cay: 50,
-    y_nghia: 'Không quan sát thấy vảy quý hay vảy xấu đặc biệt. Vảy thuộc dạng phổ thông — giá trị phụ thuộc thể lực, nuôi dưỡng và luyện tập.',
-  };
+  return { ten: null, loai: 'thuong' as const, tin_cay: 50, y_nghia: 'Không quan sát thấy vảy quý hay vảy xấu đặc biệt. Vảy thuộc dạng phổ thông.' };
 }
 
 function tinhDiem(mat: string, chan: string, longDang: string, mappedVay: ReturnType<typeof mapVayFromDescription>, doRo: number) {
@@ -106,70 +90,83 @@ function tinhGia(diem: number, loai: string) {
   return '500.000 - 1.500.000';
 }
 
-// ===== SYSTEM PROMPT =====
 const SYSTEM_PROMPT = `Bạn là chuyên gia xem tướng gà chọi Việt Nam với bộ kiến thức 92 loại vảy chuẩn.
 
 NHIỆM VỤ: Quan sát và mô tả thực tế — KHÔNG tự đặt tên vảy.
 
 KIẾN THỨC VỊ TRÍ CHÂN GÀ:
-- Hàng Quách (Nội): theo ngón giữa (ngón ngọ) đi thẳng lên gối
-- Hàng Thành (Ngoại): theo ngón ngoại đi thẳng lên gối  
-- Hàng Thới: theo ngón thới đi lên
+- Hàng Quách (Nội): theo ngón giữa đi thẳng lên gối
+- Hàng Thành (Ngoại): theo ngón ngoại đi thẳng lên gối
 - Hàng Hậu: mặt sau chân, 1 hàng vảy lớn
 - Hàng Độ: từ cựa lên đến gối
-- Hàng Kẽm: giữa hàng Hậu và hàng Độ, từ cựa lên gối (mặt trong)
-- Hàng Biên: giữa hàng Ngoại và hàng Hậu, nhỏ lăn tăn từ gối xuống
+- Hàng Kẽm: giữa hàng Hậu và hàng Độ (mặt trong)
+- Hàng Biên: giữa hàng Ngoại và hàng Hậu
 
-QUY TẮC TUYỆT ĐỐI:
-1. Tất cả ảnh là CÙNG 1 CON GÀ — tự nhận diện từng ảnh là phần gì
-2. CHỈ mô tả hình dạng, vị trí, kích thước vảy — KHÔNG đặt tên
-3. Dùng đúng thuật ngữ: hàng Quách, hàng Thành, hàng Hậu, hàng Độ, hàng Kẽm, hàng Biên, hàng Thới
-4. Nếu không rõ → nói rõ lý do
-5. Mỗi lần viết khác cách diễn đạt, không lặp mẫu
-6. Viết kiểu dân chơi gà miền Nam — gần gũi, thực tế
-
-MỨC ĐỘ TIN CẬY:
-- "thấy rõ": 80%+ rõ nét
-- "có dấu hiệu": khoảng 60%
-- "không quan sát được rõ": dưới 50%`;
+QUY TẮC:
+1. Tất cả ảnh là CÙNG 1 CON GÀ
+2. CHỈ mô tả vảy — KHÔNG đặt tên
+3. Nếu không rõ → nói rõ lý do
+4. Viết kiểu dân chơi gà miền Nam`;
 
 const USER_PROMPT = `Nhìn tất cả ảnh — đây là CÙNG 1 CON GÀ nhiều góc.
 
-Tự nhận diện từng ảnh là phần gì, rồi tổng hợp phân tích.
-
-Trả về JSON thuần không backtick:
+Trả về JSON thuần (không backtick, không markdown):
 {
-  "so_anh": 2,
-  "nhan_dien_anh": "Ảnh 1: [phần gì, rõ/mờ]. Ảnh 2: [phần gì, rõ/mờ]...",
-  "do_ro_trung_binh": 70,
-  "phan_thay_ro": "liệt kê phần thấy rõ",
-  "phan_khong_ro": "liệt kê phần chưa thấy và lý do",
-  "mat": "mô tả màu sắc mắt, độ sáng, độ lanh — dùng từ chuyên môn dân chơi gà",
-  "chan": "mô tả màu chân (vàng/xanh/đen/trắng...), độ khô, gân nổi, chân có tướng không",
-  "long_dang": "mô tả màu lông, dáng đứng, thể trạng — nhìn có phải gà chiến không",
-  "vay_quan_sat": "MÔ TẢ KỸ vảy thấy được theo đúng thuật ngữ hàng Quách/Thành/Hậu/Độ/Kẽm/Biên/Thới: vị trí chính xác, kích thước (to/vừa/nhỏ), hình dạng đặc biệt, số lượng, màu sắc. Nếu thấy vảy có hình dạng đặc biệt thì mô tả kỹ hình dạng đó. KHÔNG đặt tên vảy.",
-  "hau_do_kem": "mô tả riêng hàng Hậu, hàng Độ, hàng Kẽm — đây là quan trọng để đánh giá",
-  "diem_manh": "2-3 điểm mạnh thực sự thấy được",
-  "diem_han_che": "điểm yếu hoặc phần chưa quan sát đủ",
-  "nhan_xet_tong": "nhận xét tổng thể theo kiểu dân chơi gà — thực tế, không nịnh, không phán bừa"
+  "so_anh": số ảnh,
+  "nhan_dien_anh": "Ảnh 1: ... Ảnh 2: ...",
+  "do_ro_trung_binh": 0-100,
+  "phan_thay_ro": "...",
+  "phan_khong_ro": "...",
+  "mat": "mô tả mắt",
+  "chan": "mô tả chân",
+  "long_dang": "mô tả lông dáng",
+  "vay_quan_sat": "mô tả kỹ vảy theo thuật ngữ hàng Quách/Thành/Hậu/Độ/Kẽm — KHÔNG đặt tên vảy",
+  "hau_do_kem": "mô tả riêng hàng Hậu, Độ, Kẽm",
+  "diem_manh": "điểm mạnh",
+  "diem_han_che": "điểm yếu",
+  "nhan_xet_tong": "nhận xét tổng thể kiểu dân chơi gà"
 }`;
 
 export async function POST(req: NextRequest) {
+  // ── 1. Kiểm tra API key ──
+  if (!process.env.OPENAI_API_KEY) {
+    return NextResponse.json(
+      { error: 'Chưa cấu hình OPENAI_API_KEY trong .env.local' },
+      { status: 500 }
+    );
+  }
+
+  // ── 2. Parse body ──
+  let body: any;
   try {
-    const { images } = await req.json();
-    const validImages = (images || []).filter(Boolean);
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Request body không hợp lệ' }, { status: 400 });
+  }
 
-    if (validImages.length === 0) {
-      return NextResponse.json({ error: 'Cần ít nhất 1 ảnh' }, { status: 400 });
-    }
+  // ── 3. Validate ảnh ──
+  const validImages: string[] = (body.images || []).filter(
+    (img: any) => typeof img === 'string' && img.startsWith('data:image')
+  );
 
-    const content: any[] = [{ type: 'text', text: USER_PROMPT }];
-    validImages.forEach((img: string, i: number) => {
-      content.push({ type: 'text', text: `--- Ảnh ${i + 1} ---` });
-      content.push({ type: 'image_url', image_url: { url: img, detail: 'high' } });
-    });
+  if (validImages.length === 0) {
+    return NextResponse.json(
+      { error: 'Cần ít nhất 1 ảnh hợp lệ. Ảnh phải là định dạng base64.' },
+      { status: 400 }
+    );
+  }
 
-    const response = await openai.chat.completions.create({
+  // ── 4. Build message content ──
+  const content: any[] = [{ type: 'text', text: USER_PROMPT }];
+  validImages.forEach((img, i) => {
+    content.push({ type: 'text', text: `--- Ảnh ${i + 1} ---` });
+    content.push({ type: 'image_url', image_url: { url: img, detail: 'high' } });
+  });
+
+  // ── 5. Gọi OpenAI ──
+  let response: any;
+  try {
+    response = await openai.chat.completions.create({
       model: 'gpt-4o',
       max_tokens: 1800,
       temperature: 0.8,
@@ -178,71 +175,85 @@ export async function POST(req: NextRequest) {
         { role: 'user', content },
       ],
     });
-
-    const raw = response.choices[0].message.content || '';
-    console.log('AI raw:', raw);
-
-    let ai: any;
-    try { ai = JSON.parse(raw); }
-    catch {
-      const m = raw.match(/\{[\s\S]*\}/);
-      if (!m) return NextResponse.json({ error: 'Không parse được' }, { status: 500 });
-      ai = JSON.parse(m[0]);
+  } catch (apiErr: any) {
+    const msg: string = apiErr?.message || '';
+    console.error('OpenAI error:', msg);
+    if (msg.includes('401') || msg.includes('Incorrect API key') || msg.includes('invalid_api_key')) {
+      return NextResponse.json({ error: 'OPENAI_API_KEY không hợp lệ. Kiểm tra lại key tại platform.openai.com.' }, { status: 401 });
     }
-
-    // Mapping từ mô tả AI — code quyết định tên vảy
-    const vayText = `${ai.vay_quan_sat || ''} ${ai.hau_do_kem || ''}`;
-    const mappedVay = mapVayFromDescription(vayText);
-    const doRo = ai.do_ro_trung_binh || 60;
-    const tongDiem = tinhDiem(ai.mat || '', ai.chan || '', ai.long_dang || '', mappedVay, doRo);
-    const doTinCay = Math.min(90, Math.round(doRo * 0.5 + mappedVay.tin_cay * 0.5));
-    const gia = tinhGia(tongDiem, mappedVay.loai);
-
-    // Tìm danh sách vảy tốt có thể trong database để AI so sánh
-    const vayTotList = Object.entries(VAY_DATABASE.tot)
-      .map(([ten, data]) => `${ten}: ${data.vi_tri}`)
-      .join('\n');
-
-    return NextResponse.json({
-      so_anh: validImages.length,
-      nhan_dien_anh: ai.nhan_dien_anh,
-      do_ro: doRo,
-      phan_thay_ro: ai.phan_thay_ro,
-      phan_khong_ro: ai.phan_khong_ro,
-      mat: ai.mat,
-      chan: ai.chan,
-      long_dang: ai.long_dang,
-      vay_quan_sat: ai.vay_quan_sat,
-      hau_do_kem: ai.hau_do_kem,
-      diem_manh: ai.diem_manh,
-      diem_han_che: ai.diem_han_che,
-      nhan_xet_tong: ai.nhan_xet_tong,
-
-      // Kết luận từ code mapping
-      vay_ten: mappedVay.ten,
-      vay_loai: mappedVay.loai,
-      vay_ket_luan: mappedVay.ten
-        ? `${mappedVay.loai === 'xau' ? '⚠️' : '✅'} Phát hiện: ${mappedVay.ten}`
-        : '📊 Vảy phổ thông — không phát hiện vảy quý hay vảy xấu trong 92 loại',
-      vay_y_nghia: mappedVay.y_nghia,
-      tin_cay_vay: mappedVay.tin_cay,
-
-      tong_diem: tongDiem,
-      do_tin_cay: doTinCay,
-      gia_de_xuat: gia,
-      ly_do_gia: `Điểm ${tongDiem}/10 — ${mappedVay.ten ? `phát hiện ${mappedVay.ten} (tin cậy ${mappedVay.tin_cay}%)` : 'vảy phổ thông'} — độ rõ ảnh ${doRo}%`,
-
-      yeu_cau_bo_sung: doRo < 70
-        ? `Cần ảnh rõ hơn: ${ai.phan_khong_ro || 'đặc biệt ảnh chân sát gối, ngang cựa, dưới ngón giữa'}`
-        : validImages.length < 3
-          ? `Có ${validImages.length}/4 ảnh. Thêm ảnh chân rõ vảy để phân tích chính xác hơn.`
-          : 'Ảnh tương đối đủ. Nếu có video đá thử càng chính xác hơn.',
-
-      canh_bao: 'Nhận định AI từ hình ảnh — không phải đánh giá thực chiến. Giá tham khảo thị trường. Kết quả thực tế phụ thuộc nuôi dưỡng và luyện tập.',
-    });
-
-  } catch (error: any) {
-    console.error('Error:', error?.message);
-    return NextResponse.json({ error: error?.message }, { status: 500 });
+    if (msg.includes('429') || msg.includes('rate_limit')) {
+      return NextResponse.json({ error: 'Quá nhiều yêu cầu. Chờ vài giây rồi thử lại.' }, { status: 429 });
+    }
+    if (msg.includes('insufficient_quota') || msg.includes('billing')) {
+      return NextResponse.json({ error: 'Tài khoản OpenAI hết credits. Kiểm tra billing tại platform.openai.com.' }, { status: 402 });
+    }
+    if (msg.includes('timeout') || msg.includes('ECONNRESET')) {
+      return NextResponse.json({ error: 'Kết nối tới OpenAI bị timeout. Thử lại sau.' }, { status: 504 });
+    }
+    return NextResponse.json({ error: `Lỗi OpenAI: ${msg.slice(0, 200)}` }, { status: 500 });
   }
+
+  // ── 6. Parse JSON từ AI ──
+  const raw = response.choices?.[0]?.message?.content || '';
+  console.log('AI raw (first 300):', raw.slice(0, 300));
+
+  let ai: any;
+  // Thử parse trực tiếp, rồi clean markdown, rồi extract
+  const attempts = [
+    raw,
+    raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim(),
+    (raw.match(/\{[\s\S]*\}/) || [])[0] || '',
+  ];
+  for (const attempt of attempts) {
+    if (!attempt) continue;
+    try { ai = JSON.parse(attempt); break; } catch { /* next */ }
+  }
+
+  if (!ai) {
+    console.error('All JSON parse attempts failed. Raw:', raw.slice(0, 500));
+    return NextResponse.json(
+      { error: 'AI trả về định dạng không hợp lệ. Vui lòng thử lại.' },
+      { status: 500 }
+    );
+  }
+
+  // ── 7. Tính toán & trả kết quả ──
+  const vayText = `${ai.vay_quan_sat || ''} ${ai.hau_do_kem || ''}`;
+  const mappedVay = mapVayFromDescription(vayText);
+  const doRo = typeof ai.do_ro_trung_binh === 'number' ? ai.do_ro_trung_binh : 60;
+  const tongDiem = tinhDiem(ai.mat || '', ai.chan || '', ai.long_dang || '', mappedVay, doRo);
+  const doTinCay = Math.min(90, Math.round(doRo * 0.5 + mappedVay.tin_cay * 0.5));
+
+  return NextResponse.json({
+    so_anh: validImages.length,
+    nhan_dien_anh: ai.nhan_dien_anh || '',
+    do_ro: doRo,
+    phan_thay_ro: ai.phan_thay_ro || '',
+    phan_khong_ro: ai.phan_khong_ro || '',
+    mat: ai.mat || '',
+    chan: ai.chan || '',
+    long_dang: ai.long_dang || '',
+    vay_quan_sat: ai.vay_quan_sat || '',
+    hau_do_kem: ai.hau_do_kem || '',
+    diem_manh: ai.diem_manh || '',
+    diem_han_che: ai.diem_han_che || '',
+    nhan_xet_tong: ai.nhan_xet_tong || '',
+    vay_ten: mappedVay.ten,
+    vay_loai: mappedVay.loai,
+    vay_ket_luan: mappedVay.ten
+      ? `${mappedVay.loai === 'xau' ? '⚠️' : '✅'} Phát hiện: ${mappedVay.ten}`
+      : '📊 Vảy phổ thông — không phát hiện vảy quý hay vảy xấu trong 92 loại',
+    vay_y_nghia: mappedVay.y_nghia,
+    tin_cay_vay: mappedVay.tin_cay,
+    tong_diem: tongDiem,
+    do_tin_cay: doTinCay,
+    gia_de_xuat: tinhGia(tongDiem, mappedVay.loai),
+    ly_do_gia: `Điểm ${tongDiem}/10 — ${mappedVay.ten ? `phát hiện ${mappedVay.ten} (${mappedVay.tin_cay}%)` : 'vảy phổ thông'} — độ rõ ${doRo}%`,
+    yeu_cau_bo_sung: doRo < 70
+      ? `Cần ảnh rõ hơn: ${ai.phan_khong_ro || 'ảnh chân sát gối, ngang cựa, dưới ngón giữa'}`
+      : validImages.length < 3
+        ? `Có ${validImages.length}/4 ảnh. Thêm ảnh để phân tích chính xác hơn.`
+        : 'Ảnh tương đối đủ. Có video đá thử càng chính xác hơn.',
+    canh_bao: 'Nhận định AI từ hình ảnh — không phải đánh giá thực chiến. Giá tham khảo thị trường.',
+  });
 }
