@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 
@@ -78,21 +79,26 @@ interface Banner {
   link: string;
 }
 
+const PAGE_SIZE = 10; // Load 10 bài mỗi lần thay vì 30
+
 // ============================================================
-// MEDIA GRID — 1, 2, or 3 images like Facebook
+// MEDIA GRID — dùng Next/Image
 // ============================================================
-function MediaGrid({ images }: { images: string[] }) {
+function MediaGrid({ images, priority = false }: { images: string[]; priority?: boolean }) {
   const imgs = images.slice(0, 3);
   if (imgs.length === 0) return null;
 
   if (imgs.length === 1) {
     return (
-      <div style={{ width: '100%', maxHeight: 300, overflow: 'hidden', background: '#000' }}>
-        <img
+      <div style={{ position: 'relative', width: '100%', height: 300, background: '#000' }}>
+        <Image
           src={imgs[0]}
-          loading="lazy"
-          style={{ width: '100%', maxHeight: 300, objectFit: 'cover', display: 'block' }}
-          alt=""
+          alt="ảnh bài đăng"
+          fill
+          className="object-cover"
+          sizes="(max-width: 640px) 100vw, 600px"
+          priority={priority}
+          loading={priority ? 'eager' : 'lazy'}
         />
       </div>
     );
@@ -100,26 +106,25 @@ function MediaGrid({ images }: { images: string[] }) {
 
   if (imgs.length === 2) {
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, maxHeight: 240 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, height: 240 }}>
         {imgs.map((src, i) => (
-          <div key={i} style={{ overflow: 'hidden', background: '#000' }}>
-            <img src={src} loading="lazy" style={{ width: '100%', height: 240, objectFit: 'cover', display: 'block' }} alt="" />
+          <div key={i} style={{ position: 'relative', overflow: 'hidden', background: '#000' }}>
+            <Image src={src} alt="" fill className="object-cover" sizes="50vw" loading="lazy" />
           </div>
         ))}
       </div>
     );
   }
 
-  // 3 images: big left + 2 stacked right
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 2, maxHeight: 280 }}>
-      <div style={{ overflow: 'hidden', background: '#000' }}>
-        <img src={imgs[0]} loading="lazy" style={{ width: '100%', height: 280, objectFit: 'cover', display: 'block' }} alt="" />
+    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 2, height: 280 }}>
+      <div style={{ position: 'relative', overflow: 'hidden', background: '#000' }}>
+        <Image src={imgs[0]} alt="" fill className="object-cover" sizes="66vw" loading="lazy" />
       </div>
       <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr', gap: 2 }}>
         {imgs.slice(1).map((src, i) => (
-          <div key={i} style={{ overflow: 'hidden', background: '#000' }}>
-            <img src={src} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} alt="" />
+          <div key={i} style={{ position: 'relative', overflow: 'hidden', background: '#000' }}>
+            <Image src={src} alt="" fill className="object-cover" sizes="33vw" loading="lazy" />
           </div>
         ))}
       </div>
@@ -197,7 +202,7 @@ function FloatingVideoPopup({ ytId, onClose, startX, startY, popupW }: {
 }
 
 // ============================================================
-// VIDEO POST — thumbnail + tap to float
+// VIDEO POST
 // ============================================================
 function VideoPost({ ytId }: { ytId: string }) {
   const [popup, setPopup] = useState<{ x: number; y: number; w: number } | null>(null);
@@ -221,6 +226,7 @@ function VideoPost({ ytId }: { ytId: string }) {
         <img
           src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
           loading="lazy"
+          decoding="async"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
           alt="video"
         />
@@ -235,7 +241,7 @@ function VideoPost({ ytId }: { ytId: string }) {
 }
 
 // ============================================================
-// POST CONTENT — with expand/collapse
+// POST CONTENT
 // ============================================================
 function PostContent({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -279,6 +285,7 @@ function PostMenu({ post, currentUserId, onDelete, onReport }: {
     await supabase.from('posts').update({ noi_dung: editText.trim() }).eq('id', post.id);
     setEditing(false); setOpen(false); window.location.reload();
   }
+
   async function handleDelete() {
     if (!confirm('Bạn chắc chắn muốn xóa?')) return;
     await supabase.from('posts').delete().eq('id', post.id);
@@ -295,11 +302,20 @@ function PostMenu({ post, currentUserId, onDelete, onReport }: {
         <div style={{ position: 'absolute', right: 0, top: 36, background: '#fff', borderRadius: 8, boxShadow: '0 4px 20px rgba(0,0,0,0.18)', minWidth: 200, zIndex: 200, overflow: 'hidden' }}>
           {isAuthor ? (
             <>
-              <MenuItem icon="✏️" label="Chỉnh sửa" onClick={() => { setEditing(true); setOpen(false); }} />
-              <MenuItem icon="🗑️" label="Xóa bài viết" onClick={handleDelete} danger />
+              <button onClick={() => { setEditing(true); setOpen(false); }}
+                style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
+                ✏️ Chỉnh sửa
+              </button>
+              <button onClick={handleDelete}
+                style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 13, color: '#e74c3c', display: 'flex', alignItems: 'center', gap: 10 }}>
+                🗑️ Xóa bài viết
+              </button>
             </>
           ) : (
-            <MenuItem icon="⚠️" label="Báo cáo" onClick={() => { onReport(); setOpen(false); }} />
+            <button onClick={() => { onReport(); setOpen(false); }}
+              style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
+              ⚠️ Báo cáo
+            </button>
           )}
         </div>
       )}
@@ -323,35 +339,25 @@ function PostMenu({ post, currentUserId, onDelete, onReport }: {
   );
 }
 
-function MenuItem({ icon, label, onClick, danger }: { icon: string; label: string; onClick: () => void; danger?: boolean }) {
-  return (
-    <button onClick={onClick}
-      style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 13, color: danger ? '#e74c3c' : '#050505', display: 'flex', alignItems: 'center', gap: 10, fontWeight: 500 }}>
-      <span>{icon}</span>{label}
-    </button>
-  );
-}
-
 // ============================================================
-// POST CARD — compact, Facebook mobile style
+// POST CARD
 // ============================================================
 interface PostCardProps {
   post: Post; comments: Comment[]; liked: boolean; expanded: boolean;
   commentInput: string; currentUserAvatar: string; currentUserId: string | null;
+  priority?: boolean;
   onLike: () => void; onToggleComments: () => void;
   onCommentChange: (v: string) => void; onCommentSubmit: () => void;
   onShare: () => void; onReport: () => void; onDelete: () => void;
 }
 
-function PostCard({ post, comments, liked, expanded, commentInput, currentUserAvatar, currentUserId, onLike, onToggleComments, onCommentChange, onCommentSubmit, onShare, onReport, onDelete }: PostCardProps) {
+function PostCard({ post, comments, liked, expanded, commentInput, currentUserAvatar, currentUserId, priority = false, onLike, onToggleComments, onCommentChange, onCommentSubmit, onShare, onReport, onDelete }: PostCardProps) {
   const ytId = getYoutubeId(post.youtube_url);
-  const avatar = post.profiles?.avatar_url
+  const avatarUrl = post.profiles?.avatar_url
     || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.profiles?.full_name || 'U')}&background=8B0000&color=fff`;
   const name = post.profiles?.full_name || 'Người dùng';
   const postText = post.noi_dung || post.content || '';
   const likeCount = post.like_count ?? post.likes ?? 0;
-
-  // Support multi-image
   const images: string[] = post.image_urls?.length
     ? post.image_urls.slice(0, 3)
     : post.image_url ? [post.image_url] : [];
@@ -361,9 +367,10 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
       {/* Header */}
       <div style={{ padding: '10px 12px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <img src={avatar}
+          {/* Avatar dùng <img> thường vì ui-avatars không trong remotePatterns */}
+          <img src={avatarUrl} loading="lazy" decoding="async"
             style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #e4e6ea', flexShrink: 0, objectFit: 'cover' }}
-            loading="lazy" alt="" />
+            alt={name} />
           <div>
             <div style={{ fontWeight: 700, fontSize: 13, color: '#050505', lineHeight: 1.2 }}>{name}</div>
             <div style={{ fontSize: 11, color: '#65676b', marginTop: 1 }}>{timeAgo(post.created_at)} trước</div>
@@ -372,11 +379,10 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
         <PostMenu post={post} currentUserId={currentUserId} onDelete={onDelete} onReport={onReport} />
       </div>
 
-      {/* Text */}
       {postText.length > 0 && <PostContent text={postText} />}
 
-      {/* Media */}
-      {images.length > 0 && <MediaGrid images={images} />}
+      {/* Media — priority cho bài đầu tiên */}
+      {images.length > 0 && <MediaGrid images={images} priority={priority} />}
       {ytId && !images.length && <VideoPost ytId={ytId} />}
 
       {/* Counts */}
@@ -394,55 +400,49 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
         </div>
       )}
 
-      {/* Action buttons */}
+      {/* Actions */}
       <div style={{ display: 'flex', borderBottom: expanded ? '1px solid #e4e6ea' : 'none' }}>
         {[
-          { icon: liked ? '👍' : '👍', label: 'Thích', color: liked ? '#c0392b' : '#65676b', weight: liked ? 700 : 400, action: onLike },
-          { icon: '💬', label: 'Bình luận', color: '#65676b', weight: 400, action: onToggleComments },
-          { icon: '↗', label: 'Chia sẻ', color: '#65676b', weight: 400, action: onShare },
+          { label: 'Thích', color: liked ? '#c0392b' : '#65676b', weight: liked ? 700 : 400, action: onLike },
+          { label: 'Bình luận', color: '#65676b', weight: 400, action: onToggleComments },
+          { label: 'Chia sẻ', color: '#65676b', weight: 400, action: onShare },
         ].map(btn => (
           <button key={btn.label} onClick={btn.action}
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '7px 4px', border: 'none', background: liked && btn.label === 'Thích' ? '#fef0f0' : 'none', cursor: 'pointer', borderRadius: 0, fontSize: 13, fontWeight: btn.weight, color: btn.color, transition: 'background .15s' }}>
-            <span style={{ fontSize: btn.label === 'Chia sẻ' ? 16 : 15 }}>{btn.icon}</span>
-            <span>{btn.label}</span>
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '7px 4px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: btn.weight, color: btn.color }}>
+            {btn.label}
           </button>
         ))}
       </div>
 
-      {/* Comments section */}
+      {/* Comments */}
       {expanded && (
         <div style={{ padding: '8px 12px 10px' }}>
           {comments.length === 0 && (
             <p style={{ color: '#8a8d91', fontSize: 12, margin: '0 0 8px', textAlign: 'center' }}>Chưa có bình luận</p>
           )}
-          {comments.map(c => {
-            const cAvatar = c.profiles?.avatar_url || `https://ui-avatars.com/api/?name=U&background=8B0000&color=fff`;
-            return (
-              <div key={c.id} style={{ display: 'flex', gap: 7, marginBottom: 8 }}>
-                <img src={cAvatar} loading="lazy" style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} alt="" />
-                <div>
-                  <div style={{ background: '#f0f2f5', borderRadius: 14, padding: '6px 11px', display: 'inline-block', maxWidth: '100%' }}>
-                    <div style={{ fontWeight: 700, fontSize: 12, color: '#050505' }}>{c.profiles?.full_name || 'Người dùng'}</div>
-                    <div style={{ fontSize: 13, color: '#050505', marginTop: 1 }}>{c.content}</div>
-                  </div>
-                  <div style={{ fontSize: 10, color: '#8a8d91', marginTop: 2, paddingLeft: 4 }}>{timeAgo(c.created_at)} trước</div>
+          {comments.map(c => (
+            <div key={c.id} style={{ display: 'flex', gap: 7, marginBottom: 8 }}>
+              <img src={c.profiles?.avatar_url || `https://ui-avatars.com/api/?name=U&background=8B0000&color=fff`}
+                loading="lazy" style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} alt="" />
+              <div>
+                <div style={{ background: '#f0f2f5', borderRadius: 14, padding: '6px 11px', display: 'inline-block' }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, color: '#050505' }}>{c.profiles?.full_name || 'Người dùng'}</div>
+                  <div style={{ fontSize: 13, color: '#050505', marginTop: 1 }}>{c.content}</div>
                 </div>
+                <div style={{ fontSize: 10, color: '#8a8d91', marginTop: 2, paddingLeft: 4 }}>{timeAgo(c.created_at)} trước</div>
               </div>
-            );
-          })}
-          {/* Input */}
+            </div>
+          ))}
           <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 6 }}>
-            <img src={currentUserAvatar} loading="lazy" style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} alt="" />
+            <img src={currentUserAvatar} loading="lazy"
+              style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} alt="" />
             <div style={{ flex: 1, background: '#f0f2f5', borderRadius: 18, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input
-                value={commentInput}
-                onChange={e => onCommentChange(e.target.value)}
+              <input value={commentInput} onChange={e => onCommentChange(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && onCommentSubmit()}
                 placeholder="Viết bình luận..."
-                style={{ flex: 1, border: 'none', background: 'none', outline: 'none', fontSize: 13, color: '#050505' }}
-              />
+                style={{ flex: 1, border: 'none', background: 'none', outline: 'none', fontSize: 13, color: '#050505' }} />
               <button onClick={onCommentSubmit}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c0392b', fontSize: 15, padding: 0, display: 'flex', alignItems: 'center' }}>
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c0392b', fontSize: 15, padding: 0 }}>
                 ➤
               </button>
             </div>
@@ -454,44 +454,27 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
 }
 
 // ============================================================
-// CREATE POST BAR — compact
+// CREATE POST BAR
 // ============================================================
-function CreatePostBar({ userAvatar, userName, onOpen }: { userAvatar: string; userName: string; onOpen: () => void }) {
+function CreatePostBar({ userAvatar, onOpen }: { userAvatar: string; onOpen: () => void }) {
   return (
     <div style={{ background: '#fff', padding: '8px 12px', marginBottom: 8, boxShadow: '0 1px 0 rgba(0,0,0,0.08)' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <img src={userAvatar} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} alt="" />
+        <img src={userAvatar} loading="lazy"
+          style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} alt="" />
         <div onClick={onOpen}
           style={{ flex: 1, background: '#f0f2f5', borderRadius: 20, padding: '8px 14px', cursor: 'pointer', color: '#65676b', fontSize: 14, border: '1px solid #e4e6ea' }}>
           Bạn đang nghĩ gì? 🐓
         </div>
       </div>
       <div style={{ display: 'flex', borderTop: '1px solid #e4e6ea', marginTop: 8, paddingTop: 4 }}>
-        <button onClick={onOpen}
-          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '5px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: '#65676b', fontWeight: 600 }}>
+        <button onClick={onOpen} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '5px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: '#65676b', fontWeight: 600 }}>
           📷 <span>Ảnh/Video</span>
         </button>
-        <button onClick={onOpen}
-          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '5px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: '#65676b', fontWeight: 600 }}>
+        <button onClick={onOpen} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '5px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: '#65676b', fontWeight: 600 }}>
           ✍️ <span>Viết bài</span>
         </button>
       </div>
-    </div>
-  );
-}
-
-// ============================================================
-// SORT TABS
-// ============================================================
-function SortTabs({ value, onChange }: { value: 'newest' | 'hot'; onChange: (v: 'newest' | 'hot') => void }) {
-  return (
-    <div style={{ background: '#fff', padding: '6px 12px', marginBottom: 8, display: 'flex', gap: 6, boxShadow: '0 1px 0 rgba(0,0,0,0.08)' }}>
-      {([['newest', '🕐 Mới nhất'], ['hot', '🔥 Nổi bật']] as const).map(([v, l]) => (
-        <button key={v} onClick={() => onChange(v)}
-          style={{ padding: '5px 12px', borderRadius: 16, border: 'none', background: value === v ? '#fdf0f0' : '#f0f2f5', color: value === v ? '#c0392b' : '#65676b', fontWeight: value === v ? 700 : 500, fontSize: 12, cursor: 'pointer' }}>
-          {l}
-        </button>
-      ))}
     </div>
   );
 }
@@ -518,11 +501,6 @@ function CreatePostModal({ user, userAvatar, userName, onSubmit, onClose }: {
     setImagePreviews(files.map(f => URL.createObjectURL(f)));
   }
 
-  function removeImage(i: number) {
-    setImageFiles(prev => prev.filter((_, idx) => idx !== i));
-    setImagePreviews(prev => prev.filter((_, idx) => idx !== i));
-  }
-
   async function handleSubmit() {
     if (!postContent.trim()) return;
     setSubmitting(true);
@@ -543,52 +521,34 @@ function CreatePostModal({ user, userAvatar, userName, onSubmit, onClose }: {
           <span style={{ fontWeight: 700, fontSize: 16, color: '#050505' }}>Tạo bài viết</span>
           <button onClick={onClose} style={{ background: '#e4e6ea', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
         </div>
-
         <div style={{ padding: '12px 14px' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
             <img src={userAvatar} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} alt="" />
             <span style={{ fontWeight: 600, fontSize: 14, color: '#050505' }}>{userName}</span>
           </div>
-
-          <textarea
-            value={postContent}
-            onChange={e => setPostContent(e.target.value)}
-            placeholder="Bạn đang nghĩ gì? 🐓"
-            autoFocus
-            style={{ width: '100%', minHeight: 100, border: 'none', outline: 'none', resize: 'none', fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box', color: '#050505', lineHeight: 1.5 }}
-          />
-
-          {/* Image previews */}
+          <textarea value={postContent} onChange={e => setPostContent(e.target.value)}
+            placeholder="Bạn đang nghĩ gì? 🐓" autoFocus
+            style={{ width: '100%', minHeight: 100, border: 'none', outline: 'none', resize: 'none', fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box', color: '#050505', lineHeight: 1.5 }} />
           {imagePreviews.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: imagePreviews.length === 1 ? '1fr' : '1fr 1fr', gap: 4, marginTop: 8, borderRadius: 8, overflow: 'hidden' }}>
               {imagePreviews.map((src, i) => (
                 <div key={i} style={{ position: 'relative' }}>
                   <img src={src} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} alt="" />
-                  <button onClick={() => removeImage(i)}
+                  <button onClick={() => { setImageFiles(p => p.filter((_, idx) => idx !== i)); setImagePreviews(p => p.filter((_, idx) => idx !== i)); }}
                     style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.55)', color: '#fff', border: 'none', borderRadius: '50%', width: 22, height: 22, cursor: 'pointer', fontSize: 12 }}>×</button>
                 </div>
               ))}
             </div>
           )}
-
-          {/* Add media */}
           <div style={{ border: '1px solid #e4e6ea', borderRadius: 8, padding: '10px 12px', marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#050505' }}>Thêm vào bài viết</span>
-            <button onClick={() => fileInputRef.current?.click()}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, padding: '0 4px' }}>📷</button>
+            <button onClick={() => fileInputRef.current?.click()} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, padding: '0 4px' }}>📷</button>
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleImages} />
-
-          <input
-            value={postYoutube}
-            onChange={e => setPostYoutube(e.target.value)}
+          <input value={postYoutube} onChange={e => setPostYoutube(e.target.value)}
             placeholder="🎬 Link YouTube (không bắt buộc)"
-            style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginTop: 8, boxSizing: 'border-box', outline: 'none', color: '#555' }}
-          />
-
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || !postContent.trim()}
+            style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginTop: 8, boxSizing: 'border-box', outline: 'none', color: '#555' }} />
+          <button onClick={handleSubmit} disabled={submitting || !postContent.trim()}
             style={{ width: '100%', marginTop: 10, padding: '11px', background: !postContent.trim() || submitting ? '#bcc0c4' : '#c0392b', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: postContent.trim() && !submitting ? 'pointer' : 'not-allowed' }}>
             {submitting ? 'Đang đăng...' : 'Đăng'}
           </button>
@@ -610,6 +570,9 @@ export default function CongDongPage() {
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
   const [showPopup, setShowPopup] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(0);
   const [sortBy, setSortBy] = useState<'newest' | 'hot'>('newest');
   const [hotPosts, setHotPosts] = useState<Post[]>([]);
   const [featuredVideos, setFeaturedVideos] = useState<any[]>([]);
@@ -618,41 +581,91 @@ export default function CongDongPage() {
   const bannerColors = ['#7B1818', '#1a3a6e', '#4a1a00'];
   const bannerEmojis = ['💊', '🥚', '🌾'];
 
+  // Infinite scroll observer
+  const loaderRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data?.user ?? null));
   }, []);
-  useEffect(() => { fetchPosts(); }, [sortBy]);
+
+  useEffect(() => {
+    setPosts([]);
+    setPage(0);
+    setHasMore(true);
+    fetchPosts(0, true);
+  }, [sortBy]);
+
   useEffect(() => { fetchSidebarData(); }, []);
 
-  async function fetchSidebarData() {
-    const { data: hotData } = await supabase.from('posts').select('id, noi_dung, like_count, likes').eq('status', 'active').order('like_count', { ascending: false }).limit(5);
-    if (hotData) setHotPosts(hotData as Post[]);
-    const { data: vidData } = await supabase.from('videos').select('*').limit(5);
-    if (vidData) setFeaturedVideos(vidData);
-    const { data: suKeData } = await supabase.from('profiles').select('id, username, avatar_url, trust_score').order('trust_score', { ascending: false }).limit(5);
-    if (suKeData) setTopSuKe(suKeData);
-    const { data: bannerData } = await supabase.from('banners').select('*').order('vi_tri');
-    if (bannerData && bannerData.length > 0) setBanners(bannerData);
-  }
+  // Infinite scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
+          loadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    if (loaderRef.current) observer.observe(loaderRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, page]);
 
-  async function fetchPosts() {
-    setLoading(true);
+  async function fetchPosts(pageNum: number, reset = false) {
+    if (pageNum === 0) setLoading(true);
+    else setLoadingMore(true);
+
+    const from = pageNum * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
     let query = supabase.from('posts').select('*').eq('status', 'active');
-    query = sortBy === 'newest' ? query.order('created_at', { ascending: false }) : query.order('like_count', { ascending: false });
-    const { data, error } = await query.limit(30);
-    if (error) { console.error(error.message); setLoading(false); return; }
+    query = sortBy === 'newest'
+      ? query.order('created_at', { ascending: false })
+      : query.order('like_count', { ascending: false });
+    const { data, error } = await query.range(from, to);
+
+    if (error) { console.error(error.message); setLoading(false); setLoadingMore(false); return; }
+
     if (data && data.length > 0) {
       const userIds = [...new Set(data.map((p: any) => p.user_id))];
-      const { data: profilesData } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', userIds);
+      const { data: profilesData } = await supabase.from('profiles')
+        .select('id, full_name, avatar_url').in('id', userIds);
       const profileMap: Record<string, any> = {};
       profilesData?.forEach((p: any) => { profileMap[p.id] = p; });
-      setPosts(data.map((p: any) => ({ ...p, profiles: profileMap[p.user_id] || null })) as Post[]);
-    } else { setPosts([]); }
+      const newPosts = data.map((p: any) => ({ ...p, profiles: profileMap[p.user_id] || null })) as Post[];
+
+      setPosts(prev => reset ? newPosts : [...prev, ...newPosts]);
+      setHasMore(data.length === PAGE_SIZE);
+      setPage(pageNum + 1);
+    } else {
+      if (reset) setPosts([]);
+      setHasMore(false);
+    }
+
     setLoading(false);
+    setLoadingMore(false);
+  }
+
+  function loadMore() {
+    if (!loadingMore && hasMore) fetchPosts(page);
+  }
+
+  async function fetchSidebarData() {
+    const [hotRes, vidRes, suKeRes, bannerRes] = await Promise.all([
+      supabase.from('posts').select('id, noi_dung, like_count').eq('status', 'active').order('like_count', { ascending: false }).limit(5),
+      supabase.from('videos').select('*').limit(5),
+      supabase.from('profiles').select('id, username, avatar_url, trust_score').order('trust_score', { ascending: false }).limit(5),
+      supabase.from('banners').select('*').order('vi_tri'),
+    ]);
+    if (hotRes.data) setHotPosts(hotRes.data as Post[]);
+    if (vidRes.data) setFeaturedVideos(vidRes.data);
+    if (suKeRes.data) setTopSuKe(suKeRes.data);
+    if (bannerRes.data && bannerRes.data.length > 0) setBanners(bannerRes.data);
   }
 
   async function fetchComments(postId: string) {
-    const { data } = await supabase.from('comments').select('*, profiles(full_name, avatar_url)').eq('post_id', postId).order('created_at', { ascending: true });
+    const { data } = await supabase.from('comments')
+      .select('*, profiles(full_name, avatar_url)').eq('post_id', postId).order('created_at', { ascending: true });
     if (data) setComments(prev => ({ ...prev, [postId]: data as Comment[] }));
   }
 
@@ -663,7 +676,6 @@ export default function CongDongPage() {
       const m = cleanYoutube.match(/src=["']([^"']+)["']/);
       cleanYoutube = m ? m[1] : '';
     }
-
     const uploadedUrls: string[] = [];
     for (const file of images.slice(0, 3)) {
       const ext = file.name.split('.').pop();
@@ -674,14 +686,12 @@ export default function CongDongPage() {
         uploadedUrls.push(urlData.publicUrl);
       }
     }
-
     const { data, error } = await supabase.from('posts').insert({
       user_id: user.id, noi_dung: content.trim(), youtube_url: cleanYoutube,
       image_url: uploadedUrls[0] || null,
       image_urls: uploadedUrls.length > 0 ? uploadedUrls : null,
       comment_count: 0, share_count: 0, report_count: 0, status: 'active',
     }).select().single();
-
     if (error) { alert(`❌ Lỗi: ${error.message}`); return; }
     if (data) {
       setPosts(prev => [{
@@ -704,7 +714,8 @@ export default function CongDongPage() {
   async function submitComment(postId: string) {
     const text = commentInputs[postId]?.trim();
     if (!text || !user) return;
-    const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: user.id, content: text }).select('*, profiles(full_name, avatar_url)').single();
+    const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: user.id, content: text })
+      .select('*, profiles(full_name, avatar_url)').single();
     if (data) {
       setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), data as Comment] }));
       setPosts(prev => prev.map(p => p.id === postId ? { ...p, comment_count: p.comment_count + 1 } : p));
@@ -738,16 +749,10 @@ export default function CongDongPage() {
     <div style={{ backgroundColor: '#f0f2f5', minHeight: '100vh', fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
 
       {showPopup && (
-        <CreatePostModal
-          user={user}
-          userAvatar={userAvatar}
-          userName={userName}
-          onSubmit={handleSubmitPost}
-          onClose={() => setShowPopup(false)}
-        />
+        <CreatePostModal user={user} userAvatar={userAvatar} userName={userName}
+          onSubmit={handleSubmitPost} onClose={() => setShowPopup(false)} />
       )}
 
-      {/* 3-column desktop / 1-column mobile */}
       <div className="cgv-grid" style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: '240px 1fr 280px', gap: 16, padding: '12px 10px', alignItems: 'start' }}>
 
         {/* LEFT SIDEBAR */}
@@ -762,8 +767,7 @@ export default function CongDongPage() {
             ].map((item, idx) => (
               <Link key={idx} href={item.href} style={{ textDecoration: 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: item.active ? '#fdf0f0' : 'transparent', borderLeft: `3px solid ${item.active ? '#c0392b' : 'transparent'}`, color: item.active ? '#c0392b' : '#333', fontWeight: item.active ? 700 : 400, fontSize: 13 }}>
-                  <span style={{ fontSize: 15 }}>{item.icon}</span>
-                  {item.label}
+                  <span style={{ fontSize: 15 }}>{item.icon}</span>{item.label}
                 </div>
               </Link>
             ))}
@@ -777,7 +781,7 @@ export default function CongDongPage() {
                 <Link key={sk.id} href={`/ho-so/${sk.id}`} style={{ textDecoration: 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 7 }}>
                     <div style={{ position: 'relative', flexShrink: 0 }}>
-                      <img src={av} style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover' }} alt={skName} />
+                      <img src={av} loading="lazy" style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover' }} alt={skName} />
                       {i === 0 && <span style={{ position: 'absolute', top: -3, right: -3, fontSize: 9 }}>👑</span>}
                     </div>
                     <div>
@@ -793,27 +797,29 @@ export default function CongDongPage() {
 
         {/* CENTER FEED */}
         <main style={{ minWidth: 0 }}>
-          <CreatePostBar
-            userAvatar={userAvatar}
-            userName={userName}
-            onOpen={() => user ? setShowPopup(true) : alert('Vui lòng đăng nhập!')}
-          />
-          <SortTabs value={sortBy} onChange={setSortBy} />
+          <CreatePostBar userAvatar={userAvatar}
+            onOpen={() => user ? setShowPopup(true) : alert('Vui lòng đăng nhập!')} />
 
-          {loading ? (
+          {/* Sort tabs */}
+          <div style={{ background: '#fff', padding: '6px 12px', marginBottom: 8, display: 'flex', gap: 6, boxShadow: '0 1px 0 rgba(0,0,0,0.08)' }}>
+            {([['newest', '🕐 Mới nhất'], ['hot', '🔥 Nổi bật']] as const).map(([v, l]) => (
+              <button key={v} onClick={() => setSortBy(v)}
+                style={{ padding: '5px 12px', borderRadius: 16, border: 'none', background: sortBy === v ? '#fdf0f0' : '#f0f2f5', color: sortBy === v ? '#c0392b' : '#65676b', fontWeight: sortBy === v ? 700 : 500, fontSize: 12, cursor: 'pointer' }}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {/* Loading skeleton */}
+          {loading && (
             <div style={{ background: '#fff', padding: 28, textAlign: 'center', color: '#8a8d91', fontSize: 13 }}>
               <div style={{ width: 28, height: 28, border: '3px solid #e4e6ea', borderTop: '3px solid #c0392b', borderRadius: '50%', margin: '0 auto 8px', animation: 'spin 0.8s linear infinite' }} />
               Đang tải bài viết...
             </div>
-          ) : posts.length === 0 ? (
-            <div style={{ background: '#fff', padding: 40, textAlign: 'center', borderRadius: 10 }}>
-              <div style={{ fontSize: 40, marginBottom: 8 }}>📝</div>
-              <p style={{ color: '#8a8d91', marginBottom: 12, fontSize: 14 }}>Chưa có bài viết nào</p>
-              <button onClick={() => setShowPopup(true)} style={{ background: '#c0392b', color: '#fff', border: 'none', borderRadius: 7, padding: '9px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
-                Viết bài đầu tiên
-              </button>
-            </div>
-          ) : posts.map(post => (
+          )}
+
+          {/* Posts — priority chỉ cho bài đầu tiên */}
+          {!loading && posts.map((post, index) => (
             <PostCard
               key={post.id}
               post={post}
@@ -823,6 +829,7 @@ export default function CongDongPage() {
               commentInput={commentInputs[post.id] || ''}
               currentUserAvatar={userAvatar}
               currentUserId={currentUserId}
+              priority={index === 0}
               onLike={() => likePost(post.id)}
               onToggleComments={() => toggleComments(post.id)}
               onCommentChange={v => setCommentInputs(prev => ({ ...prev, [post.id]: v }))}
@@ -832,6 +839,26 @@ export default function CongDongPage() {
               onDelete={() => setPosts(prev => prev.filter(p => p.id !== post.id))}
             />
           ))}
+
+          {/* Infinite scroll trigger */}
+          <div ref={loaderRef} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {loadingMore && (
+              <div style={{ width: 24, height: 24, border: '3px solid #e4e6ea', borderTop: '3px solid #c0392b', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            )}
+            {!hasMore && posts.length > 0 && (
+              <p style={{ color: '#8a8d91', fontSize: 12 }}>Đã xem hết bài viết</p>
+            )}
+          </div>
+
+          {!loading && posts.length === 0 && (
+            <div style={{ background: '#fff', padding: 40, textAlign: 'center', borderRadius: 10 }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>📝</div>
+              <p style={{ color: '#8a8d91', marginBottom: 12, fontSize: 14 }}>Chưa có bài viết nào</p>
+              <button onClick={() => setShowPopup(true)} style={{ background: '#c0392b', color: '#fff', border: 'none', borderRadius: 7, padding: '9px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+                Viết bài đầu tiên
+              </button>
+            </div>
+          )}
         </main>
 
         {/* RIGHT SIDEBAR */}
@@ -845,12 +872,11 @@ export default function CongDongPage() {
                 const ytId = getYoutubeId(ytRaw);
                 if (!ytId) return null;
                 const title = v.tieu_de || v.title || v.ten || 'Video';
-                const thumb = v.thumbnail || v.anh_dai_dien || v.image_url || '';
+                const thumb = v.thumbnail || v.anh_dai_dien || v.image_url || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
                 return (
                   <div key={v.id} style={{ marginBottom: 8 }}>
                     <div style={{ position: 'relative', borderRadius: 6, overflow: 'hidden', background: '#000', paddingBottom: '56.25%' }}>
-                      <img src={thumb || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
-                        loading="lazy"
+                      <img src={thumb} loading="lazy" decoding="async"
                         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} alt={title} />
                       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <div style={{ background: 'rgba(0,0,0,0.55)', borderRadius: '50%', width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -861,8 +887,7 @@ export default function CongDongPage() {
                     <p style={{ margin: '3px 0 0', fontSize: 11, fontWeight: 600, lineHeight: 1.3, color: '#333' }}>{title}</p>
                   </div>
                 );
-              })
-            }
+              })}
           </div>
 
           <div style={{ background: '#fff', borderRadius: 10, padding: 12, marginBottom: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
@@ -902,7 +927,6 @@ export default function CongDongPage() {
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
-
         @media (max-width: 1024px) {
           .cgv-grid { grid-template-columns: 180px 1fr 220px !important; gap: 10px !important; padding: 8px !important; }
         }
