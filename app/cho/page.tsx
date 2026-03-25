@@ -1,464 +1,67 @@
-'use client';
-import { useState, useEffect } from 'react';
-import Image from 'next/image';
-import { createPortal } from 'react-dom';
-import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
-import GaDetailContent from '@/components/GaDetailContent';
+// app/cho/page.tsx — SERVER COMPONENT (không có 'use client')
+// Data fetch ở server → HTML trả về đã có sẵn → LCP thấp
 
-// ─────────────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────────────
-const KhuVuc = [
-  'Tất cả', 'TP.HCM', 'Bình Dương', 'Đồng Nai', 'Long An',
-  'Tiền Giang', 'Bến Tre', 'Vĩnh Long', 'Đồng Tháp',
-  'An Giang', 'Kiên Giang', 'Cần Thơ', 'Hậu Giang', 'Sóc Trăng',
-  'Bạc Liêu', 'Cà Mau', 'Tây Ninh', 'Bình Phước',
-  'Đà Nẵng', 'Khánh Hòa', 'Bình Định', 'Huế',
-  'Nghệ An', 'Thanh Hóa', 'Đắk Lắk', 'Lâm Đồng',
-  'Hà Nội', 'Hải Phòng', 'Quảng Ninh',
-];
+import { Suspense } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import ChoClient from './ChoClient';
 
-const LoaiGa = [
-  'Tất cả', 'Gà Tre', 'Gà Ri', 'Gà Đông Tảo', 'Gà Ta',
-  'Gà Chọi', 'Gà Nòi', 'Gà Mã', 'Gà Peru', 'Gà Thái',
-  'Gà Mỹ', 'Gà Tây', 'Gà Lôi', 'Gà Rừng', 'Khác',
-];
+// Cache 60 giây
+export const revalidate = 60;
 
-const MauNen = [
-  'bg-orange-800', 'bg-gray-700', 'bg-green-800',
-  'bg-red-900', 'bg-yellow-700', 'bg-teal-800',
-];
+export const metadata = {
+  title: 'Chợ Gà – Mua Bán Gà Chọi Toàn Quốc',
+  description: 'Hàng ngàn con gà chọi đang bán: gà đòn, gà cựa, gà tre, gà nòi. Tìm ngay gà ưng ý!',
+};
 
-// ─────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────
-function formatGia(gia: number): string {
-  if (gia >= 1000000) return `${(gia / 1000000).toFixed(1).replace('.0', '')} triệu đ`;
-  return `${gia.toLocaleString('vi-VN')} đ`;
+async function fetchGaServer() {
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    const { data, error } = await supabase
+      .from('ga')
+      .select(`
+        id, ten, loai_ga, gia, can_nang, tuoi,
+        khu_vuc, mo_ta, video_url, status,
+        view_count, created_at,
+        ga_images (url, is_primary),
+        ai_analysis (total_score)
+      `)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) throw error;
+    return data ?? [];
+  } catch (e) {
+    console.error('[cho/page] fetchGaServer error:', e);
+    return [];
+  }
 }
 
-function getYoutubeId(url: string): string | null {
-  if (!url) return null;
-  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([^&\n?#]+)/);
-  return m ? m[1] : null;
-}
-
-function getVideoThumb(url: string): string | null {
-  const id = getYoutubeId(url);
-  return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null;
-}
-
-// ─────────────────────────────────────────────
-// MODAL XEM ĐẦY ĐỦ
-// ─────────────────────────────────────────────
-function GaFullModal({ gaId, onClose }: { gaId: string; onClose: () => void }) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
-  }, []);
+export default async function ChoPage() {
+  // Fetch ở server — không cần client JS
+  const initialData = await fetchGaServer();
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-2 md:p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[95vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white z-10">
-          <span className="text-base font-black text-gray-800">🐓 Chi tiết gà</span>
-          <div className="flex items-center gap-2">
-            <Link href={`/ga/${gaId}`} onClick={onClose}
-              className="text-xs border border-gray-300 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition">
-              Mở trang riêng ↗
-            </Link>
-            <button onClick={onClose}
-              className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 text-gray-600 text-sm">
-              ✕
-            </button>
-          </div>
-        </div>
-        <div className="p-3 md:p-5">
-          <GaDetailContent gaId={gaId} isModal={true} onClose={onClose} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// MODAL XEM NHANH
-// ─────────────────────────────────────────────
-function GaQuickModal({ ga, onClose }: { ga: any; onClose: () => void }) {
-  const [activeMedia, setActiveMedia] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [showFull, setShowFull] = useState(false);
-
-  const mediaList: { type: 'image' | 'video'; url: string; thumb?: string }[] = [
-    ...(ga.ga_images || []).map((img: any) => ({ type: 'image' as const, url: img.url })),
-    ...(ga.video_url ? [{ type: 'video' as const, url: ga.video_url, thumb: getVideoThumb(ga.video_url) || '' }] : []),
-  ];
-  const currentMedia = mediaList[activeMedia];
-  const ytId = currentMedia?.type === 'video' ? getYoutubeId(currentMedia.url) : null;
-  const aiScore = ga.ai_analysis?.[0]?.total_score;
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
-  }, []);
-
-  useEffect(() => { setIsPlaying(false); }, [activeMedia]);
-
-  return (
-    <>
-      {showFull && typeof document !== 'undefined' && createPortal(
-        <GaFullModal gaId={String(ga.id)} onClose={() => { setShowFull(false); onClose(); }} />,
-        document.body
-      )}
-
-      <div className="fixed inset-0 bg-black/65 z-50 flex items-center justify-center p-3" onClick={onClose}>
-        <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-
-          {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2.5 border-b">
-            <div className="min-w-0 flex-1 pr-2">
-              <h2 className="font-black text-sm text-gray-800 truncate">{ga.ten}</h2>
-              <div className="text-xs text-gray-500">{ga.loai_ga} • 📍 {ga.khu_vuc}</div>
-            </div>
-            <button onClick={onClose}
-              className="flex-shrink-0 w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 text-gray-600 text-xs">
-              ✕
-            </button>
-          </div>
-
-          {/* Media */}
-          {mediaList.length > 0 && (
-            <div className="relative bg-black" style={{ paddingBottom: '56%' }}>
-              {currentMedia.type === 'image' ? (
-                <Image
-                  src={currentMedia.url}
-                  alt={ga.ten}
-                  fill
-                  className="object-contain"
-                  sizes="(max-width: 640px) 100vw, 400px"
-                />
-              ) : ytId ? (
-                !isPlaying ? (
-                  <>
-                    <img src={currentMedia.thumb || `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
-                      alt="video" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                    <button onClick={() => setIsPlaying(true)} className="absolute inset-0 flex items-center justify-center">
-                      <div className="bg-black/60 rounded-full w-12 h-12 flex items-center justify-center hover:bg-black/80">
-                        <span className="text-white text-xl ml-1">▶</span>
-                      </div>
-                    </button>
-                  </>
-                ) : (
-                  <iframe src={`https://www.youtube.com/embed/${ytId}?autoplay=1&controls=1&rel=0`}
-                    className="absolute inset-0 w-full h-full border-none"
-                    allow="autoplay; encrypted-media; fullscreen" allowFullScreen />
-                )
-              ) : null}
-              {aiScore && (
-                <div className="absolute top-2 right-2 bg-yellow-400 text-black text-xs px-2 py-0.5 rounded-full font-bold z-10">
-                  ⭐ {aiScore}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Thumbnails */}
-          {mediaList.length > 1 && (
-            <div className="flex gap-1.5 px-3 pt-2 overflow-x-auto">
-              {mediaList.map((m, i) => (
-                <button key={i} onClick={() => setActiveMedia(i)}
-                  className={`relative flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 transition ${activeMedia === i ? 'border-[#8B1A1A]' : 'border-gray-200'}`}>
-                  {m.type === 'image'
-                    ? <img src={m.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                    : <><img src={m.thumb || ''} alt="" className="w-full h-full object-cover bg-gray-800" loading="lazy" />
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                        <span className="text-white text-xs">▶</span>
-                      </div></>
-                  }
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Info + CTA */}
-          <div className="px-3 py-3">
-            <div className="flex items-baseline justify-between mb-1">
-              <div className="text-[#8B1A1A] font-black text-lg">{formatGia(parseInt(ga.gia))}</div>
-              <div className="flex gap-1.5">
-                {ga.can_nang && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{ga.can_nang}kg</span>}
-                {ga.tuoi && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{ga.tuoi}th</span>}
+    <Suspense fallback={
+      <div className="max-w-6xl mx-auto px-3 py-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {[1,2,3,4,5,6].map(i => (
+            <div key={i} className="bg-white rounded-xl overflow-hidden shadow-sm animate-pulse">
+              <div className="bg-gray-200 h-36" />
+              <div className="p-3 space-y-2">
+                <div className="bg-gray-200 h-3 rounded w-3/4" />
+                <div className="bg-gray-200 h-4 rounded w-1/2" />
               </div>
             </div>
-            {ga.mo_ta && <p className="text-xs text-gray-500 line-clamp-2 mb-2.5">{ga.mo_ta}</p>}
-            <div className="flex gap-2">
-              <button onClick={() => setShowFull(true)}
-                className="flex-1 bg-[#8B1A1A] text-white font-bold py-2.5 rounded-xl hover:bg-[#6B0F0F] transition text-sm">
-                🐓 Xem đầy đủ
-              </button>
-              <button onClick={onClose}
-                className="px-4 border border-gray-300 text-gray-600 font-bold py-2.5 rounded-xl hover:bg-gray-50 transition text-sm">
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────
-// GA CARD — dùng Next/Image, priority cho 4 ảnh đầu
-// ─────────────────────────────────────────────
-function GaCard({ ga, idx, priority = false }: { ga: any; idx: number; priority?: boolean }) {
-  const [showModal, setShowModal] = useState(false);
-
-  const anhChinh = ga.ga_images?.find((i: any) => i.is_primary)?.url || ga.ga_images?.[0]?.url;
-  const hasVideo = !!ga.video_url;
-  const videoThumb = hasVideo ? getVideoThumb(ga.video_url) : null;
-  const totalMedia = (ga.ga_images?.length || 0) + (hasVideo ? 1 : 0);
-  const aiScore = ga.ai_analysis?.[0]?.total_score;
-  const displayThumb = anhChinh || videoThumb;
-
-  return (
-    <>
-      {showModal && typeof document !== 'undefined' && createPortal(
-        <GaQuickModal ga={ga} onClose={() => setShowModal(false)} />,
-        document.body
-      )}
-
-      <div onClick={() => setShowModal(true)}
-        className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer">
-
-        {/* ── ẢNH: Next/Image thay vì <img> ── */}
-        <div className="relative h-36 w-full bg-gray-100">
-          {displayThumb ? (
-            <Image
-              src={displayThumb}
-              alt={ga.ten}
-              fill
-              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              className="object-cover"
-              priority={priority}
-              loading={priority ? 'eager' : 'lazy'}
-            />
-          ) : (
-            <div className={`${MauNen[idx % MauNen.length]} h-full flex items-center justify-center text-5xl`}>🐓</div>
-          )}
-          {hasVideo && (
-            <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded z-10">🎬</div>
-          )}
-          {totalMedia > 1 && (
-            <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded z-10">+{totalMedia - 1}</div>
-          )}
-          {aiScore && (
-            <div className="absolute bottom-2 right-2 bg-yellow-400 text-black text-xs px-1.5 py-0.5 rounded-full font-bold z-10">⭐ {aiScore}</div>
-          )}
-        </div>
-
-        <div className="p-2 md:p-3">
-          <div className="text-xs text-[#8B1A1A] font-semibold mb-0.5 truncate">{ga.loai_ga}</div>
-          <div className="font-bold text-xs md:text-sm text-gray-800 truncate">{ga.ten}</div>
-          <div className="text-[#8B1A1A] font-black text-xs md:text-sm mt-1">{formatGia(parseInt(ga.gia))}</div>
-          <div className="mt-1"><span className="text-xs text-gray-500">📍 {ga.khu_vuc}</span></div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────
-// FILTER PANEL
-// ─────────────────────────────────────────────
-function FilterPanel({ khuVuc, loaiGa, giaMax, setKhuVuc, setLoaiGa, setGiaMax, onClose }: any) {
-  return (
-    <div className="bg-white rounded-xl p-4 shadow-sm">
-      <h3 className="font-black text-gray-800 mb-4">Lọc kết quả</h3>
-      <div className="mb-4">
-        <div className="text-sm font-semibold text-gray-600 mb-1">Mức giá tối đa</div>
-        <div className="flex justify-between text-xs text-gray-500 mb-1">
-          <span>0đ</span><span>{formatGia(giaMax)}</span>
-        </div>
-        <input type="range" min="500000" max="50000000" step="500000"
-          value={giaMax} onChange={e => setGiaMax(Number(e.target.value))}
-          className="w-full accent-red-800" />
-      </div>
-      <div className="mb-4">
-        <div className="text-sm font-semibold text-gray-600 mb-2">Khu vực</div>
-        <select value={khuVuc} onChange={e => setKhuVuc(e.target.value)}
-          className="w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-300">
-          {KhuVuc.map(kv => <option key={kv}>{kv}</option>)}
-        </select>
-      </div>
-      <div className="mb-4">
-        <div className="text-sm font-semibold text-gray-600 mb-2">Loại gà</div>
-        <div className="space-y-1 max-h-48 overflow-y-auto">
-          {LoaiGa.map(lg => (
-            <label key={lg} className="flex items-center gap-2 text-sm cursor-pointer hover:text-red-800">
-              <input type="radio" name="loaiga" checked={loaiGa === lg}
-                onChange={() => setLoaiGa(lg)} className="accent-red-800" />
-              {lg}
-            </label>
           ))}
         </div>
       </div>
-      <button onClick={() => { setKhuVuc('Tất cả'); setLoaiGa('Tất cả'); setGiaMax(50000000); onClose(); }}
-        className="w-full border border-red-800 text-red-800 rounded-lg py-2 text-sm font-semibold hover:bg-red-50 transition">
-        Xóa bộ lọc
-      </button>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// MAIN PAGE
-// ─────────────────────────────────────────────
-export default function ChoPage() {
-  const [gaList, setGaList] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [khuVuc, setKhuVuc] = useState('Tất cả');
-  const [loaiGa, setLoaiGa] = useState('Tất cả');
-  const [giaMax, setGiaMax] = useState(50000000);
-  const [sapXep, setSapXep] = useState('Mới nhất');
-  const [showMobileFilter, setShowMobileFilter] = useState(false);
-
-  useEffect(() => { fetchGa(); }, [khuVuc, loaiGa]);
-
-  async function fetchGa() {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ limit: '50' });
-      if (loaiGa !== 'Tất cả') params.append('loai', loaiGa);
-      if (khuVuc !== 'Tất cả') params.append('khu_vuc', khuVuc);
-      const res = await fetch(`/api/ga?${params}`);
-      const data = await res.json();
-      setGaList(data.data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const filtered = gaList.filter(g => parseInt(g.gia) <= giaMax);
-  const sorted = [...filtered].sort((a, b) => {
-    if (sapXep === 'Giá thấp nhất') return parseInt(a.gia) - parseInt(b.gia);
-    if (sapXep === 'Giá cao nhất') return parseInt(b.gia) - parseInt(a.gia);
-    if (sapXep === 'Điểm AI cao nhất') return (b.ai_analysis?.[0]?.total_score || 0) - (a.ai_analysis?.[0]?.total_score || 0);
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
-
-  const filterProps = {
-    khuVuc, loaiGa, giaMax, setKhuVuc, setLoaiGa, setGiaMax,
-    onClose: () => setShowMobileFilter(false),
-  };
-
-  return (
-    <div className="max-w-6xl mx-auto px-3 py-4">
-
-      {/* Mobile filter overlay */}
-      {showMobileFilter && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end md:hidden" onClick={() => setShowMobileFilter(false)}>
-          <div className="w-full bg-white rounded-t-2xl p-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="font-black text-gray-800">Bộ lọc</h3>
-              <button onClick={() => setShowMobileFilter(false)} className="text-gray-400 text-2xl">×</button>
-            </div>
-            <FilterPanel {...filterProps} />
-          </div>
-        </div>
-      )}
-
-      <div className="flex gap-4">
-        {/* Sidebar — desktop */}
-        <div className="hidden md:block w-56 flex-shrink-0">
-          <div className="sticky top-20">
-            <FilterPanel {...filterProps} />
-          </div>
-        </div>
-
-        <div className="flex-1 min-w-0">
-          {/* Toolbar */}
-          <div className="flex justify-between items-center mb-3">
-            <div>
-              <h1 className="font-black text-lg text-gray-800">Chợ Gà Việt</h1>
-              <p className="text-xs text-gray-500">{sorted.length} kết quả</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowMobileFilter(true)}
-                className="md:hidden flex items-center gap-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-600 bg-white">
-                🔍 Lọc
-              </button>
-              <select value={sapXep} onChange={e => setSapXep(e.target.value)}
-                className="border rounded-lg px-2 py-1.5 text-xs md:text-sm">
-                <option>Mới nhất</option>
-                <option>Giá thấp nhất</option>
-                <option>Giá cao nhất</option>
-                <option>Điểm AI cao nhất</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Loading skeleton */}
-          {loading && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[1,2,3,4,5,6].map(i => (
-                <div key={i} className="bg-white rounded-xl overflow-hidden shadow-sm animate-pulse">
-                  <div className="bg-gray-200 h-36" />
-                  <div className="p-3 space-y-2">
-                    <div className="bg-gray-200 h-3 rounded w-3/4" />
-                    <div className="bg-gray-200 h-4 rounded w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Grid gà — priority cho 4 ảnh đầu (above the fold) */}
-          {!loading && sorted.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {sorted.map((ga, idx) => (
-                <GaCard key={ga.id} ga={ga} idx={idx} priority={idx < 4} />
-              ))}
-            </div>
-          )}
-
-          {/* Empty */}
-          {!loading && sorted.length === 0 && (
-            <div className="text-center py-20 text-gray-400">
-              <div className="text-5xl mb-4">🐓</div>
-              <div className="font-semibold">Chưa có gà nào</div>
-              <Link href="/dang-ga"
-                className="mt-4 inline-block bg-[#8B1A1A] text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-[#6B0F0F] transition">
-                Đăng gà ngay
-              </Link>
-            </div>
-          )}
-
-          {/* CTA */}
-          {!loading && sorted.length > 0 && (
-            <div className="mt-6 bg-gradient-to-r from-[#8B1A1A] to-red-700 rounded-xl p-5 text-white text-center">
-              <div className="font-black text-lg mb-1">🐓 Bạn có gà muốn bán?</div>
-              <p className="text-red-200 text-sm mb-3">Đăng bán miễn phí, AI tự động phân tích</p>
-              <Link href="/dang-ga"
-                className="bg-yellow-400 text-black font-black px-6 py-2 rounded-full hover:bg-yellow-300 transition inline-block">
-                Đăng gà ngay
-              </Link>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+    }>
+      <ChoClient initialData={initialData} />
+    </Suspense>
   );
 }
