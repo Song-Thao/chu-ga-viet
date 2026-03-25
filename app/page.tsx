@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Image from 'next/image';        // ← THÊM
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -60,7 +61,7 @@ function formatNum(n: number): string {
   return String(n);
 }
 
-// ── Video hover component ─────────────────────────────────────
+// ── Video Card ────────────────────────────────────────────────
 function VideoCard({ post }: { post: any }) {
   const [hovering, setHovering] = useState(false);
   const [muted, setMuted] = useState(true);
@@ -101,16 +102,16 @@ function VideoCard({ post }: { post: any }) {
           </>
         ) : (
           <>
+            {/* Dùng <img> thường cho thumbnail YouTube vì domain đã preconnect */}
             <img
               src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
               alt={title}
+              loading="lazy"
+              decoding="async"
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
             />
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ background: 'rgba(0,0,0,0.65)', borderRadius: '50%', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 20 }}>▶</div>
-            </div>
-            <div style={{ position: 'absolute', bottom: 6, left: 8, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 10, padding: '2px 6px', borderRadius: 4 }}>
-              🖱️ Rê để xem trước
             </div>
           </>
         )}
@@ -126,6 +127,64 @@ function VideoCard({ post }: { post: any }) {
   );
 }
 
+// ── Ga Card — dùng Next/Image, priority cho 2 ảnh đầu ────────
+function GaCard({ ga, idx, priority = false }: { ga: any; idx: number; priority?: boolean }) {
+  const anhChinh = ga.ga_images?.find((i: any) => i.is_primary)?.url || ga.ga_images?.[0]?.url;
+  const aiScore = ga.ai_analysis?.[0]?.total_score;
+
+  return (
+    <Link href={`/ga/${ga.id}`}>
+      <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer">
+
+        {/* ── ẢNH: Next/Image thay vì <img> ── */}
+        <div className="relative h-36 w-full bg-gray-100">
+          {anhChinh ? (
+            <Image
+              src={anhChinh}
+              alt={ga.ten}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
+              className="object-cover"
+              priority={priority}
+              loading={priority ? 'eager' : 'lazy'}
+            />
+          ) : (
+            <div className={`${MauNen[idx % MauNen.length]} h-full flex items-center justify-center text-5xl`}>
+              🐓
+            </div>
+          )}
+          {aiScore && (
+            <div className="absolute bottom-2 right-2 bg-yellow-400 text-black text-xs px-1.5 py-0.5 rounded-full font-bold z-10">
+              ⭐ {aiScore}
+            </div>
+          )}
+        </div>
+
+        <div className="p-3">
+          <div className="text-xs text-[#8B1A1A] font-semibold mb-0.5">{ga.loai_ga}</div>
+          <div className="font-bold text-sm text-gray-800 truncate">{ga.ten}</div>
+          <div className="text-[#8B1A1A] font-black text-sm mt-1">{formatGia(parseInt(ga.gia))}</div>
+          <div className="flex justify-between items-center mt-2">
+            <span className="text-xs text-gray-500">📍 {ga.khu_vuc}</span>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// ── Skeleton ──────────────────────────────────────────────────
+const SkeletonCard = () => (
+  <div className="bg-white rounded-xl overflow-hidden shadow-sm animate-pulse">
+    <div className="bg-gray-200 h-36"></div>
+    <div className="p-3 space-y-2">
+      <div className="bg-gray-200 h-3 rounded w-1/3"></div>
+      <div className="bg-gray-200 h-4 rounded w-3/4"></div>
+      <div className="bg-gray-200 h-3 rounded w-1/2"></div>
+    </div>
+  </div>
+);
+
 // ── Main Page ─────────────────────────────────────────────────
 export default function HomePage() {
   const router = useRouter();
@@ -139,8 +198,6 @@ export default function HomePage() {
     { vi_tri: 3, tieu_de: 'THỨC ĂN', tieu_de_phu: 'Dinh dưỡng cao cấp', link: '' },
   ]);
   const [loading, setLoading] = useState(true);
-
-  // Search state
   const [loai, setLoai] = useState('Tất cả');
   const [khuVuc, setKhuVuc] = useState('Tất cả');
   const [mucGiaIdx, setMucGiaIdx] = useState(0);
@@ -149,44 +206,34 @@ export default function HomePage() {
 
   const fetchData = async () => {
     try {
-      // Config
-      const { data: cfg } = await supabase.from('config').select('shopee_link').single();
-      if (cfg?.shopee_link) setShopeeLink(cfg.shopee_link);
+      // Chạy song song — không await từng cái
+      const [cfgRes, bannerRes, moiDangRes, noiBatRes, vidRes] = await Promise.all([
+        supabase.from('config').select('shopee_link').single(),
+        supabase.from('banners').select('*').order('vi_tri'),
+        supabase.from('ga')
+          .select('id, ten, loai_ga, gia, khu_vuc, ga_images(url, is_primary), ai_analysis(total_score)')
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(4),
+        supabase.from('ga')
+          .select('id, ten, loai_ga, gia, khu_vuc, view_count, ga_images(url, is_primary), ai_analysis(total_score)')
+          .eq('status', 'active')
+          .order('view_count', { ascending: false })
+          .limit(4),
+        supabase.from('posts')
+          .select('id, noi_dung, youtube_url, like_count, likes, comment_count')
+          .eq('status', 'active')
+          .not('youtube_url', 'is', null)
+          .neq('youtube_url', '')
+          .order('like_count', { ascending: false })
+          .limit(6),
+      ]);
 
-      // Banners
-      const { data: bannerData } = await supabase.from('banners').select('*').order('vi_tri');
-      if (bannerData && bannerData.length > 0) setBanners(bannerData);
-
-      // Gà mới đăng
-      const { data: moiDang } = await supabase
-        .from('ga')
-        .select('id, ten, loai_ga, gia, khu_vuc, ga_images(url, is_primary), ai_analysis(total_score)')
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
-        .limit(4);
-
-      // Gà nổi bật
-      const { data: noiBat } = await supabase
-        .from('ga')
-        .select('id, ten, loai_ga, gia, khu_vuc, view_count, ga_images(url, is_primary), ai_analysis(total_score)')
-        .eq('status', 'active')
-        .order('view_count', { ascending: false })
-        .limit(4);
-
-      // Top videos — lấy từ bảng posts có youtube_url, sort theo like + comment
-      const { data: vidData } = await supabase
-        .from('posts')
-        .select('id, noi_dung, youtube_url, like_count, likes, comment_count')
-        .eq('status', 'active')
-        .not('youtube_url', 'is', null)
-        .neq('youtube_url', '')
-        .order('like_count', { ascending: false })
-        .limit(6);
-
-      setGaMoiDang(moiDang || []);
-      setGaNoiBat(noiBat || []);
-      // Lọc chỉ những post có youtube_url hợp lệ
-      setTopVideos((vidData || []).filter((p: any) => getYoutubeId(p.youtube_url)));
+      if (cfgRes.data?.shopee_link) setShopeeLink(cfgRes.data.shopee_link);
+      if (bannerRes.data && bannerRes.data.length > 0) setBanners(bannerRes.data);
+      setGaMoiDang(moiDangRes.data || []);
+      setGaNoiBat(noiBatRes.data || []);
+      setTopVideos((vidRes.data || []).filter((p: any) => getYoutubeId(p.youtube_url)));
     } catch (err) {
       console.error(err);
     } finally {
@@ -210,42 +257,6 @@ export default function HomePage() {
     if (gia >= 1000000) return `${(gia / 1000000).toFixed(1).replace('.0', '')} triệu đ`;
     return `${gia.toLocaleString('vi-VN')} đ`;
   };
-
-  const GaCard = ({ ga, idx }: { ga: any; idx: number }) => {
-    const anhChinh = ga.ga_images?.find((i: any) => i.is_primary)?.url || ga.ga_images?.[0]?.url;
-    const aiScore = ga.ai_analysis?.[0]?.total_score;
-    return (
-      <Link href={`/ga/${ga.id}`}>
-        <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer">
-          {anhChinh ? (
-            <img src={anhChinh} alt={ga.ten} className="w-full h-36 object-cover" />
-          ) : (
-            <div className={`${MauNen[idx % MauNen.length]} h-36 flex items-center justify-center text-5xl`}>🐓</div>
-          )}
-          <div className="p-3">
-            <div className="text-xs text-[#8B1A1A] font-semibold mb-0.5">{ga.loai_ga}</div>
-            <div className="font-bold text-sm text-gray-800 truncate">{ga.ten}</div>
-            <div className="text-[#8B1A1A] font-black text-sm mt-1">{formatGia(parseInt(ga.gia))}</div>
-            <div className="flex justify-between items-center mt-2">
-              <span className="text-xs text-gray-500">📍 {ga.khu_vuc}</span>
-              {aiScore && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-bold">⭐ {aiScore}</span>}
-            </div>
-          </div>
-        </div>
-      </Link>
-    );
-  };
-
-  const SkeletonCard = () => (
-    <div className="bg-white rounded-xl overflow-hidden shadow-sm animate-pulse">
-      <div className="bg-gray-200 h-36"></div>
-      <div className="p-3 space-y-2">
-        <div className="bg-gray-200 h-3 rounded w-1/3"></div>
-        <div className="bg-gray-200 h-4 rounded w-3/4"></div>
-        <div className="bg-gray-200 h-3 rounded w-1/2"></div>
-      </div>
-    </div>
-  );
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-4">
@@ -281,52 +292,31 @@ export default function HomePage() {
         </div>
       </a>
 
-      {/* SEARCH — đầy đủ khu vực + loại gà + mức giá */}
+      {/* SEARCH */}
       <div className="bg-white rounded-xl p-4 mb-6 shadow-sm">
         <div className="flex flex-wrap gap-3">
-          {/* Loại gà */}
-          <select
-            value={loai}
-            onChange={e => setLoai(e.target.value)}
-            className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[140px] focus:outline-none focus:ring-2 focus:ring-red-300"
-          >
+          <select value={loai} onChange={e => setLoai(e.target.value)}
+            className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[140px] focus:outline-none focus:ring-2 focus:ring-red-300">
             {LoaiGa.map(l => <option key={l} value={l}>{l === 'Tất cả' ? '🐓 Loại gà' : l}</option>)}
           </select>
-
-          {/* Khu vực */}
-          <select
-            value={khuVuc}
-            onChange={e => setKhuVuc(e.target.value)}
-            className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[140px] focus:outline-none focus:ring-2 focus:ring-red-300"
-          >
+          <select value={khuVuc} onChange={e => setKhuVuc(e.target.value)}
+            className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[140px] focus:outline-none focus:ring-2 focus:ring-red-300">
             {KhuVuc.map(k => <option key={k} value={k}>{k === 'Tất cả' ? '📍 Khu vực' : k}</option>)}
           </select>
-
-          {/* Mức giá */}
-          <select
-            value={mucGiaIdx}
-            onChange={e => setMucGiaIdx(Number(e.target.value))}
-            className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[140px] focus:outline-none focus:ring-2 focus:ring-red-300"
-          >
+          <select value={mucGiaIdx} onChange={e => setMucGiaIdx(Number(e.target.value))}
+            className="border rounded-lg px-3 py-2 text-sm flex-1 min-w-[140px] focus:outline-none focus:ring-2 focus:ring-red-300">
             {MucGia.map((g, i) => <option key={i} value={i}>{i === 0 ? '💰 Mức giá' : g.label}</option>)}
           </select>
-
-          <button
-            onClick={handleSearch}
-            className="bg-[#8B1A1A] text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-[#6B0F0F] transition"
-          >
+          <button onClick={handleSearch}
+            className="bg-[#8B1A1A] text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-[#6B0F0F] transition">
             🔍 Tìm kiếm
           </button>
         </div>
-
-        {/* Tags nhanh */}
         <div className="flex gap-2 mt-3 flex-wrap">
           {['Gà Nòi', 'Gà Tre', 'Gà Thái', 'Gà Peru', 'Gà Chọi'].map(tag => (
-            <button
-              key={tag}
+            <button key={tag}
               onClick={() => { setLoai(tag); setTimeout(handleSearch, 100); }}
-              className="text-xs bg-red-50 text-[#8B1A1A] border border-red-200 px-3 py-1 rounded-full hover:bg-red-100 transition font-semibold"
-            >
+              className="text-xs bg-red-50 text-[#8B1A1A] border border-red-200 px-3 py-1 rounded-full hover:bg-red-100 transition font-semibold">
               {tag}
             </button>
           ))}
@@ -340,13 +330,20 @@ export default function HomePage() {
           <Link href="/cho" className="text-[#8B1A1A] text-sm font-semibold hover:underline">Xem thêm →</Link>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {loading ? [1,2,3,4].map(i => <SkeletonCard key={i} />) :
-            gaMoiDang.length > 0 ? gaMoiDang.map((ga, idx) => <GaCard key={ga.id} ga={ga} idx={idx} />) : (
-              <div className="col-span-4 text-center py-10 text-gray-400">
-                <div className="text-4xl mb-2">🐓</div>
-                <div className="text-sm">Chưa có gà nào. <Link href="/dang-ga" className="text-[#8B1A1A] hover:underline">Đăng bán ngay!</Link></div>
-              </div>
-            )}
+          {loading
+            ? [1,2,3,4].map(i => <SkeletonCard key={i} />)
+            : gaMoiDang.length > 0
+              ? gaMoiDang.map((ga, idx) => (
+                  // priority=true cho 2 ảnh đầu → preload → LCP cải thiện
+                  <GaCard key={ga.id} ga={ga} idx={idx} priority={idx < 2} />
+                ))
+              : (
+                <div className="col-span-4 text-center py-10 text-gray-400">
+                  <div className="text-4xl mb-2">🐓</div>
+                  <div className="text-sm">Chưa có gà nào. <Link href="/dang-ga" className="text-[#8B1A1A] hover:underline">Đăng bán ngay!</Link></div>
+                </div>
+              )
+          }
         </div>
       </section>
 
@@ -369,14 +366,19 @@ export default function HomePage() {
           <Link href="/cho" className="text-[#8B1A1A] text-sm font-semibold hover:underline">Xem tất cả →</Link>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {loading ? [1,2,3,4].map(i => <SkeletonCard key={i} />) :
-            gaNoiBat.length > 0 ? gaNoiBat.map((ga, idx) => <GaCard key={ga.id} ga={ga} idx={idx} />) : (
-              <div className="col-span-4 text-center py-10 text-gray-400 text-sm">Chưa có gà nổi bật</div>
-            )}
+          {loading
+            ? [1,2,3,4].map(i => <SkeletonCard key={i} />)
+            : gaNoiBat.length > 0
+              ? gaNoiBat.map((ga, idx) => (
+                  // Gà nổi bật không cần priority — below the fold
+                  <GaCard key={ga.id} ga={ga} idx={idx} priority={false} />
+                ))
+              : <div className="col-span-4 text-center py-10 text-gray-400 text-sm">Chưa có gà nổi bật</div>
+          }
         </div>
       </section>
 
-      {/* VIDEO THỰC CHIẾN — data thật từ posts */}
+      {/* VIDEO THỰC CHIẾN */}
       <section className="mb-8">
         <div className="flex justify-between items-center mb-3">
           <h2 className="font-black text-lg text-gray-800 uppercase">🎬 Video Thực Chiến</h2>
@@ -396,14 +398,12 @@ export default function HomePage() {
           </div>
         ) : topVideos.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {topVideos.slice(0, 3).map(post => (
-              <VideoCard key={post.id} post={post} />
-            ))}
+            {topVideos.slice(0, 3).map(post => <VideoCard key={post.id} post={post} />)}
           </div>
         ) : (
           <div className="text-center py-10 text-gray-400 bg-white rounded-xl">
             <div className="text-4xl mb-2">🎬</div>
-            <div className="text-sm">Chưa có video nào. Hãy đăng bài có link YouTube trong <Link href="/cong-dong" className="text-[#8B1A1A] hover:underline">Cộng đồng</Link>!</div>
+            <div className="text-sm">Chưa có video. Đăng bài có link YouTube trong <Link href="/cong-dong" className="text-[#8B1A1A] hover:underline">Cộng đồng</Link>!</div>
           </div>
         )}
       </section>
