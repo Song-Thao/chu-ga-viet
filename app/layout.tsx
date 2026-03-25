@@ -1,4 +1,10 @@
 import type { Metadata, Viewport } from 'next';
+import './globals.css';
+import Header from '@/components/layout/Header';
+import Footer from '@/components/layout/Footer';
+import MobileNav from '@/components/layout/MobileNav';
+import { ChatProvider } from '@/components/chat/ChatContext';
+import ChatPopupManager from '@/components/chat/ChatPopupManager';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://chu-ga-viet.vercel.app';
 
@@ -12,6 +18,7 @@ export const metadata: Metadata = {
   keywords: [
     'gà chọi', 'mua bán gà', 'gà đá', 'gà tre', 'sư kê',
     'định giá gà AI', 'vảy gà', '92 loại vảy', 'chợ gà',
+    'gà chọi miền Nam', 'gà đòn', 'gà cựa',
   ],
   openGraph: {
     type: 'website',
@@ -25,7 +32,7 @@ export const metadata: Metadata = {
         url: '/og-image.jpg',
         width: 1200,
         height: 630,
-        alt: 'Chợ Gà Việt',
+        alt: 'Chợ Gà Việt – Mua Bán Gà Chọi Toàn Quốc',
       },
     ],
   },
@@ -55,3 +62,27 @@ export const viewport: Viewport = {
   initialScale: 1,
   themeColor: '#8B1A1A',
 };
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="vi">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://img.youtube.com" />
+        <link rel="dns-prefetch" href="https://ui-avatars.com" />
+      </head>
+      <body className="bg-gray-100 min-h-screen">
+        <ChatProvider>
+          <Header />
+          <main className="pb-20 md:pb-0">
+            {children}
+          </main>
+          <Footer />
+          <MobileNav />
+          <ChatPopupManager />
+        </ChatProvider>
+      </body>
+    </html>
+  );
+}
