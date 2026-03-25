@@ -61,6 +61,11 @@ function formatNum(n: number): string {
   return String(n);
 }
 
+function formatGia(gia: number): string {
+  if (gia >= 1000000) return `${(gia / 1000000).toFixed(1).replace('.0', '')} triệu đ`;
+  return `${gia.toLocaleString('vi-VN')} đ`;
+}
+
 // ── Video Card ────────────────────────────────────────────────
 function VideoCard({ post }: { post: any }) {
   const [hovering, setHovering] = useState(false);
@@ -253,10 +258,7 @@ export default function HomePage() {
     router.push(`/cho?${params.toString()}`);
   };
 
-  const formatGia = (gia: number) => {
-    if (gia >= 1000000) return `${(gia / 1000000).toFixed(1).replace('.0', '')} triệu đ`;
-    return `${gia.toLocaleString('vi-VN')} đ`;
-  };
+
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-4">
