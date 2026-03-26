@@ -1,3 +1,13 @@
+export const maxDuration = 60;
+
+// Tăng giới hạn body size cho route này
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '20mb',
+    },
+  },
+};
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
