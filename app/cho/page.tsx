@@ -25,9 +25,3 @@ async function fetchGa() {
   } catch {
     return [];
   }
-}
-
-export default async function ChoPage() {
-  const initialData = await fetchGa();
-  return <ChoClient initialData={initialData} />;
-}
