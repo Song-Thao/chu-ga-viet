@@ -28,7 +28,7 @@ export default function AIPhanTichPage() {
     setOptimizing(true);
     try {
       // Bước 1: Nén ảnh
-      const optimized = await optimizeImage(file, { maxWidthOrHeight: 1280, maxSizeKB: 300 });
+      const optimized = await optimizeImage(file, { maxWidthOrHeight: 800, maxSizeKB: 150 });
       // Bước 2: Convert file đã nén → base64 để gửi API
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader();
