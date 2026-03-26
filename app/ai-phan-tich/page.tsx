@@ -22,20 +22,26 @@ export default function AIPhanTichPage() {
     '📋 Tổng hợp kết quả...',
   ];
 
-  // ── Xử lý ảnh: tự động nén trước khi lưu ──
   const handleImage = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setOptimizing(true);
     try {
-      const result = await optimizeImage(file, { maxWidthOrHeight: 1280, maxSizeKB: 300 });
+      // Bước 1: Nén ảnh
+      const optimized = await optimizeImage(file, { maxWidthOrHeight: 1280, maxSizeKB: 300 });
+      // Bước 2: Convert file đã nén → base64 để gửi API
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target?.result as string);
+        reader.readAsDataURL(optimized.file);
+      });
       const newImages = [...images];
-      newImages[index] = result.preview;
+      newImages[index] = base64;
       setImages(newImages);
       setResult(null);
       setError('');
     } catch {
-      // fallback: đọc ảnh thô nếu optimize lỗi
+      // Fallback: đọc ảnh gốc nếu optimize lỗi
       const reader = new FileReader();
       reader.onload = (ev) => {
         const newImages = [...images];
@@ -48,7 +54,6 @@ export default function AIPhanTichPage() {
     }
   };
 
-  // ── Trích frame từ video ──
   const handleVideo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -89,7 +94,7 @@ export default function AIPhanTichPage() {
   const speakResult = (r: any) => {
     if (!r || !window.speechSynthesis) return;
     stopSpeech();
-    const text = `Kết quả phân tích ${r.so_anh} ảnh. Điểm: ${r.tong_diem} trên 10. Độ tin cậy: ${r.do_tin_cay} phần trăm. Mắt: ${r.mat}. Chân: ${r.chan}. Kết luận vảy: ${r.vay_ket_luan}. ${r.vay_y_nghia}. Nhận xét: ${r.nhan_xet_tong}. Giá đề xuất: ${r.gia_de_xuat} đồng.`.trim();
+    const text = `Kết quả phân tích ${r.so_anh} ảnh. Điểm: ${r.tong_diem} trên 10. Độ tin cậy: ${r.do_tin_cay} phần trăm. Mắt: ${r.mat}. Chân: ${r.chan}. Kết luận vảy: ${r.vay_ket_luan}. ${r.vay_y_nghia}. Nhận xét: ${r.nhan_xet_tong}. Giá đề xuất: ${r.gia_de_xuat} đồng.`;
     const utterance = new SpeechSynthesisUtterance(text);
     const voices = window.speechSynthesis.getVoices();
     const viVoice = voices.find(v => v.lang.includes('vi') || v.lang.includes('VI'));
@@ -110,23 +115,19 @@ export default function AIPhanTichPage() {
     setError('');
     setStep(0);
     stopSpeech();
-
     const interval = setInterval(() => {
       setStep(prev => prev < LoadingSteps.length - 1 ? prev + 1 : prev);
     }, 900);
-
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ images }),
       });
-
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
         throw new Error(`Lỗi server (${res.status}). Vui lòng thử lại!`);
       }
-
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `Lỗi ${res.status}`);
       setResult(data);
@@ -161,11 +162,9 @@ export default function AIPhanTichPage() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-5">
-
         {/* UPLOAD */}
         <div className="space-y-4">
           <div className="bg-white rounded-xl p-4 shadow-sm">
-
             <div className="flex gap-2 mb-3">
               <button onClick={() => { setVideoMode(false); setVideoFrames([]); }}
                 className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${!videoMode ? 'bg-[#8B1A1A] text-white' : 'bg-gray-100 text-gray-600'}`}>
@@ -177,7 +176,6 @@ export default function AIPhanTichPage() {
               </button>
             </div>
 
-            {/* Trạng thái nén ảnh */}
             {optimizing && (
               <div className="flex items-center gap-2 text-orange-600 text-sm mb-3 bg-orange-50 p-2 rounded-lg">
                 <div className="w-4 h-4 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />
@@ -191,8 +189,7 @@ export default function AIPhanTichPage() {
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   {[0,1,2,3].map(i => (
                     <label key={i} className="cursor-pointer">
-                      <input type="file" accept="image/*" className="hidden"
-                        onChange={(e) => handleImage(i, e)} />
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImage(i, e)} />
                       {images[i] ? (
                         <div className="relative">
                           <img src={images[i]!} alt="" className="w-full h-28 object-cover rounded-lg" loading="lazy" />
