@@ -1,588 +1,413 @@
-'use client';
-import { useState, useRef } from 'react';
-import { optimizeImage } from '@/lib/imageOptimizer';
+export const maxDuration = 60;
 
-interface GaData {
-  loai: string;
-  tuoi: string;
-  can_nang: string;
-  thanh_tich_tran: string;
-  thanh_tich_thang: string;
-  tinh_trang: string;
-  nguon_goc: string;
+import { NextRequest, NextResponse } from 'next/server';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ===== TỪ ĐIỂN 92 VẢY =====
+const VAY_DATABASE = {
+  tot: {
+    'Án Thiên': { vi_tri: 'vảy lớn sát đầu gối trên cao nhất hàng Thành/Quách', y_nghia: 'Sức lực bền bỉ, tránh né tài tình, ra đòn chính xác. Rất tốt.' },
+    'Phủ Địa': { vi_tri: 'hình dáng như Án Thiên nhưng đặt dưới cựa sát đầu bốn ngón', y_nghia: 'Tinh nhanh khi chinh chiến, cựa địch khó xuyên thấu. Tốt.' },
+    'Huyền Trâm': { vi_tri: 'vảy nhỏ màu đen tuyền giữa hàng Thành và Quách, ngang với cựa', y_nghia: 'Đâm nhiều chém dữ, hay hỏng mắt đối thủ. Tốt.' },
+    'Khai Vương': { vi_tri: '4 vảy dính nhau tạo hình chữ Vương', y_nghia: 'Gà quý tướng. Tốt.' },
+    'Ám Long': { vi_tri: 'vảy nhỏ ẩn ngay ngón giữa trước khi đụng ngón, màu hồng gọi là Ẩn Son', y_nghia: 'Linh Kê - gà quý hiếm.' },
+    'Gạc Thập': { vi_tri: '4 vảy sát nhau (2 hàng Thành + 2 hàng Quách) tạo hình chữ thập ngang hàng cựa', y_nghia: 'Đâm cựa liên hoàn. Rất tốt.' },
+    'Tam Tài': { vi_tri: 'từ sát gối xuống đến vảy thứ 3 có 3 hàng vảy liên tiếp', y_nghia: 'Quý Kê - đòn tài mãnh liệt, đá đồng chạng dễ thắng.' },
+    'Tứ Trực': { vi_tri: 'một chân có Án Thiên, chân kia có Phủ Địa', y_nghia: 'Quý Kê.' },
+    'Song Phủ Đao': { vi_tri: '2 vảy hàng Quách sát cựa, 2 đầu nhọn chỉ vào cựa', y_nghia: 'Nhạy cựa, khôn lanh, trả đòn tức thì.' },
+    'Địa Giáp': { vi_tri: 'vảy nhỏ mọc giữa lòng bàn chân luôn chạm đất', y_nghia: 'Linh Kê.' },
+    'Liên Châu': { vi_tri: 'vảy ngón nội đi thẳng lên quá cựa nhập vào đường thới, thẳng no tròn', y_nghia: 'Dùng cựa rất giỏi.' },
+    'Đại Giáp': { vi_tri: '3 vảy hàng Quách dính lại thành vảy lớn gần cựa', y_nghia: 'Nhiều thế, đâm đòn hiểm độc.' },
+    'Trễ Giáp': { vi_tri: '2 vảy hàng Quách song song sát nhau, đuôi chỉ vào cựa', y_nghia: 'Ra đòn rất nhanh, hay tạt hay quăng.' },
+    'Thập Hậu': { vi_tri: 'hàng hậu và hàng kẽm có 4 vảy tạo hình chữ thập', y_nghia: 'Quý tướng.' },
+    'Thập Độ': { vi_tri: 'hàng độ và hàng kẽm có 4 vảy tạo hình chữ thập', y_nghia: 'Giỏi, đá đồng chạng dễ thắng.' },
+    'Liên Kẽm': { vi_tri: '2 vảy hàng kẽm dính nhau', y_nghia: 'Bảo vệ mạng gà, vừa đánh vừa thủ.' },
+    'Độc Biên': { vi_tri: 'hàng Biên có 1 hàng thẳng từ trên xuống không đứt quãng', y_nghia: 'Gà tốt.' },
+    'Tam Vinh': { vi_tri: 'hàng độ, kẽm đúng cách, biên liên tục, hậu xuống quá cựa', y_nghia: 'Linh Kê.' },
+    'Ngũ Quỷ': { vi_tri: '1 chân có 3 hàng vảy liên tiếp từ gối xuống đến vảy thứ 5', y_nghia: 'Hung ác vô cùng.' },
+    'No Hậu': { vi_tri: 'hàng hậu từ gối không chia đôi, xuống đến cựa vẫn to rõ', y_nghia: 'Thắng trận bền bỉ.' },
+    'Phản Hậu': { vi_tri: 'hàng hậu úp xuống (ngược chiều thường)', y_nghia: 'Quý Kê.' },
+    'Huỳnh Kiều': { vi_tri: 'vảy vấn đóng hàng thứ 2-5, đầu hàng Thành đuôi hàng Quách', y_nghia: 'May độ, có đòn chết gà.' },
+    'Bản Phủ': { vi_tri: 'vảy vấn đầu nhỏ đuôi to hình lưỡi búa, đầu hàng Thành đuôi hàng Quách', y_nghia: 'Rất hay, ăn được kích giáp, yểm long.' },
+    'Kích Giáp': { vi_tri: 'vảy như vấn cán cách 4 hàng từ gối xuống', y_nghia: 'Tướng kê - ra đòn nhanh dũng mãnh, địch thường tử trận.' },
+    'Nghịch Lân': { vi_tri: 'vảy vấn ngang cựa gồm 1 vảy hàng Quách + 2 vảy hàng Thành', y_nghia: 'Thiện nghệ dùng cựa và cưa, cực kỳ uy lực.' },
+    'Giao Long': { vi_tri: 'vảy vấn hàng 2-3 đầu to đuôi nhỏ, đầu hàng Quách đuôi hàng Thành', y_nghia: 'Chuyên chui lòn, cắn gối, đá phá đùi đối thủ.' },
+  },
+  xau: {
+    'Khai Tiền': { vi_tri: '1 vảy hàng Thành nứt ra bất kể trên hay dưới cựa', y_nghia: 'Thời vàng son đã tận, không nên dùng. Rất xấu.' },
+    'Tứ Hoành Khai': { vi_tri: 'dưới gối có 4 vảy nhỏ', y_nghia: 'Kém tài, bở hơi, yếu sức, hay bị mù mắt khi ra trận. Xấu.' },
+    'Dậm Chậu': { vi_tri: '1 vảy nhỏ sát ngón trước khi giáp ngón', y_nghia: 'Xấu.' },
+    'Rọc Chậu': { vi_tri: 'vảy sát chân ngón bị cắt đứt', y_nghia: 'Xấu.' },
+    'Liên Giáp Ngoại': { vi_tri: '2 vảy hàng Thành dính nhau thành 1 vảy lớn', y_nghia: 'Không tốt (trừ từ hàng 4 từ gối xuống).' },
+    'Khai Hậu': { vi_tri: '1 vảy hậu bị nứt vỡ đôi', y_nghia: 'Không tốt.' },
+    'Lộc Điền Ngoại': { vi_tri: 'đường đất giữa Thành Quách mũi quay ra ngoài', y_nghia: 'Hữu dũng vô mưu. Xấu.' },
+    'Kém Hậu': { vi_tri: 'hàng hậu từ gối chia đôi, chưa đến cựa đã nhỏ lăn tăn', y_nghia: 'Không nên dùng.' },
+    'Thất Hậu': { vi_tri: 'hàng hậu từ gối chia 2 hàng hoặc không liền mạch', y_nghia: 'Không nên dùng.' },
+    'Ngậm Thẻ': { vi_tri: '2 hàng vảy đều bỗng có 1 vảy chen vào chia đôi', y_nghia: 'Đá tứ tung, vô đòn vô thế.' },
+  },
+};
+
+function mapVayFromDescription(moTa: string) {
+  const obs = moTa.toLowerCase();
+  for (const [ten, data] of Object.entries(VAY_DATABASE.tot)) {
+    if (obs.includes(ten.toLowerCase())) {
+      const tinCay = obs.includes('rõ') || obs.includes('xác định') ? 85 : obs.includes('dấu hiệu') || obs.includes('nghi') ? 55 : 40;
+      return { ten, loai: 'tot' as const, y_nghia: data.y_nghia, tin_cay: tinCay };
+    }
+    const viTriWords = data.vi_tri.toLowerCase().split(' ').filter(w => w.length > 4);
+    if (viTriWords.filter(w => obs.includes(w)).length >= 3) {
+      return { ten, loai: 'tot' as const, y_nghia: data.y_nghia, tin_cay: 50 };
+    }
+  }
+  for (const [ten, data] of Object.entries(VAY_DATABASE.xau)) {
+    if (obs.includes(ten.toLowerCase())) {
+      return { ten, loai: 'xau' as const, y_nghia: data.y_nghia, tin_cay: 75 };
+    }
+  }
+  return { ten: null, loai: 'thuong' as const, tin_cay: 50, y_nghia: 'Không quan sát thấy vảy quý hay vảy xấu đặc biệt. Vảy thuộc dạng phổ thông.' };
 }
 
-export default function AIPhanTichPage() {
-  const [images, setImages] = useState<(string | null)[]>([null, null, null, null]);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
-  const [error, setError] = useState('');
-  const [step, setStep] = useState(0);
-  const [speaking, setSpeaking] = useState(false);
-  const [voiceOn, setVoiceOn] = useState(true);
-  const [videoMode, setVideoMode] = useState(false);
-  const [videoFrames, setVideoFrames] = useState<string[]>([]);
-  const [optimizing, setOptimizing] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
+function tinhDiem(mat: string, chan: string, longDang: string, mappedVay: ReturnType<typeof mapVayFromDescription>, doRo: number) {
+  let s = 5.0;
+  const all = `${mat} ${chan} ${longDang}`.toLowerCase();
+  if (all.includes('sáng') || all.includes('linh hoạt') || all.includes('lanh')) s += 0.4;
+  if (all.includes('khô') || all.includes('gân nổi')) s += 0.4;
+  if (all.includes('cân đối') || all.includes('thẳng')) s += 0.3;
+  if (mappedVay.loai === 'tot') s += mappedVay.tin_cay >= 75 ? 2.0 : 1.2;
+  if (mappedVay.loai === 'xau') s -= 1.5;
+  if (doRo < 50) s -= 1.0;
+  else if (doRo < 65) s -= 0.5;
+  return Math.round(Math.max(3.0, Math.min(10.0, s)) * 10) / 10;
+}
 
-  // ── Form dữ liệu gà ──
-  const [gaData, setGaData] = useState<GaData>({
-    loai: '', tuoi: '', can_nang: '',
-    thanh_tich_tran: '', thanh_tich_thang: '',
-    tinh_trang: '', nguon_goc: '',
-  });
-  const [showForm, setShowForm] = useState(false);
+// ── RULE-BASED GIÁ (có tích hợp gaData) ──
+function tinhGiaVaRule(
+  diemNgoaiHinh: number,
+  mappedVay: ReturnType<typeof mapVayFromDescription>,
+  gaData?: any
+) {
+  // Giá base từ ngoại hình + vảy
+  let giaMin: number;
+  let giaMax: number;
+  if (mappedVay.loai === 'xau') { giaMin = 500_000; giaMax = 1_500_000; }
+  else if (diemNgoaiHinh >= 9.0) { giaMin = 15_000_000; giaMax = 30_000_000; }
+  else if (diemNgoaiHinh >= 8.0) { giaMin = 6_000_000; giaMax = 15_000_000; }
+  else if (diemNgoaiHinh >= 7.0) { giaMin = 3_000_000; giaMax = 6_000_000; }
+  else if (diemNgoaiHinh >= 6.0) { giaMin = 1_500_000; giaMax = 3_000_000; }
+  else { giaMin = 500_000; giaMax = 1_500_000; }
 
-  const LoadingSteps = [
-    '📷 Nhận diện từng ảnh...',
-    '👁 Quan sát mắt, chân, vảy...',
-    '🐾 Đối chiếu 92 loại vảy...',
-    '📋 Tổng hợp kết quả...',
-  ];
+  const dieuChinhLyDo: string[] = [];
+  let diemChienDau: number | null = null;
+  let riskLevel = 'trung_binh';
+  let riskLyDo = '';
+  let canhBaoBenh = '';
 
-  const handleImage = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setOptimizing(true);
-    try {
-      const optimized = await optimizeImage(file, { maxWidthOrHeight: 800, maxSizeKB: 150 });
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => resolve(ev.target?.result as string);
-        reader.readAsDataURL(optimized.file);
-      });
-      const newImages = [...images];
-      newImages[index] = base64;
-      setImages(newImages);
-      setResult(null); setError('');
-    } catch {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const newImages = [...images];
-        newImages[index] = ev.target?.result as string;
-        setImages(newImages);
-      };
-      reader.readAsDataURL(file);
-    } finally { setOptimizing(false); }
+  if (gaData) {
+    const tran = parseInt(gaData.thanh_tich_tran) || 0;
+    const thang = parseInt(gaData.thanh_tich_thang) || 0;
+    const tuoi = parseInt(gaData.tuoi) || 0;
+    const can = parseFloat(gaData.can_nang) || 0;
+    const tyLeThang = tran > 0 ? thang / tran : 0;
+
+    // ── RULE 1: Bệnh → cảnh báo + giảm giá mạnh ──
+    if (gaData.tinh_trang === 'nghi_benh') {
+      giaMin = Math.round(giaMin * 0.5);
+      giaMax = Math.round(giaMax * 0.5);
+      dieuChinhLyDo.push('⚠️ Nghi bệnh: giảm 50% giá');
+      canhBaoBenh = 'Gà đang nghi bệnh. Cần kiểm tra kỹ trước khi mua bán. Người mua nên yêu cầu giám định thú y.';
+      riskLevel = 'cao';
+      riskLyDo = 'Tình trạng sức khỏe chưa rõ ràng — rủi ro cao khi đầu tư.';
+    }
+    if (gaData.tinh_trang === 'dang_tri') {
+      giaMin = Math.round(giaMin * 0.4);
+      giaMax = Math.round(giaMax * 0.4);
+      dieuChinhLyDo.push('🏥 Đang điều trị: giảm 60% giá');
+      canhBaoBenh = 'Gà đang trong quá trình điều trị bệnh. Chưa đánh giá được thực lực. Không nên giao dịch vội.';
+      riskLevel = 'cao';
+      riskLyDo = 'Gà đang bệnh — không thể đánh giá thực lực, rủi ro rất cao.';
+    }
+
+    // ── RULE 2: Thành tích tốt → tăng giá ──
+    if (tran > 0) {
+      if (thang >= 5 && tyLeThang >= 0.7) {
+        giaMin = Math.round(giaMin * 1.35);
+        giaMax = Math.round(giaMax * 1.35);
+        dieuChinhLyDo.push(`🏆 Thành tích xuất sắc ${thang}/${tran} (${Math.round(tyLeThang*100)}%): +35% giá`);
+        riskLevel = 'thap';
+        riskLyDo = `Tỉ lệ thắng ${Math.round(tyLeThang*100)}% qua ${tran} trận — đã được kiểm chứng thực chiến.`;
+      } else if (thang >= 3 && tyLeThang >= 0.5) {
+        giaMin = Math.round(giaMin * 1.15);
+        giaMax = Math.round(giaMax * 1.15);
+        dieuChinhLyDo.push(`⚔️ Có thành tích ${thang}/${tran} trận: +15% giá`);
+        riskLevel = 'thap';
+        riskLyDo = `Đã có ${tran} trận chiến, tỉ lệ thắng ${Math.round(tyLeThang*100)}% — mức rủi ro thấp.`;
+      } else if (tyLeThang < 0.4 && tran >= 3) {
+        giaMin = Math.round(giaMin * 0.85);
+        giaMax = Math.round(giaMax * 0.85);
+        dieuChinhLyDo.push(`📉 Thành tích yếu ${thang}/${tran} trận: -15% giá`);
+        riskLevel = 'trung_binh';
+        riskLyDo = `Tỉ lệ thắng chỉ ${Math.round(tyLeThang*100)}% — cần xem lại phong độ.`;
+      }
+
+      diemChienDau = Math.min(10, Math.max(3, Math.round((tyLeThang * 6 + (thang >= 5 ? 2 : thang >= 3 ? 1 : 0)) * 10) / 10));
+    }
+
+    // ── RULE 3: Gà tơ chưa đá ──
+    if (tuoi > 0 && tuoi < 10 && tran === 0) {
+      if (riskLevel !== 'cao') riskLevel = 'trung_binh';
+      riskLyDo = `Gà tơ ${tuoi} tháng chưa qua thực chiến — tiềm năng chưa được kiểm chứng.`;
+      dieuChinhLyDo.push(`🐣 Gà tơ ${tuoi} tháng chưa đá: đánh giá rủi ro trung bình`);
+    }
+
+    // ── RULE 4: Cân nặng bất thường ──
+    if (can > 0 && (can < 1.5 || can > 5.5)) {
+      if (riskLevel === 'thap') riskLevel = 'trung_binh';
+      dieuChinhLyDo.push(`⚖️ Cân nặng ${can}kg bất thường — cần kiểm tra thêm`);
+    }
+  } else {
+    // Không có data → gà tơ chưa biết
+    riskLevel = 'trung_binh';
+    riskLyDo = 'Chưa có thông tin thành tích — không thể đánh giá rủi ro đầy đủ.';
+  }
+
+  const formatGia = (n: number) => {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace('.0', '') + '.000.000';
+    return n.toLocaleString('vi-VN');
   };
 
-  const handleVideo = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    const video = videoRef.current;
-    if (!video) return;
-    video.src = url; video.load();
-    video.onloadedmetadata = () => {
-      const duration = video.duration;
-      const times = [0.5, duration * 0.33, duration * 0.66, duration - 0.5];
-      const frames: string[] = [];
-      let done = 0;
-      times.forEach((t, i) => {
-        const v = document.createElement('video');
-        v.src = url;
-        v.currentTime = Math.min(t, duration - 0.1);
-        v.addEventListener('seeked', () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = 640; canvas.height = 360;
-          canvas.getContext('2d')?.drawImage(v, 0, 0, 640, 360);
-          frames[i] = canvas.toDataURL('image/jpeg', 0.7);
-          done++;
-          if (done === 4) { setVideoFrames(frames); setImages(frames as any); setResult(null); setError(''); }
-        }, { once: true });
-      });
+  return {
+    gia_de_xuat: `${formatGia(giaMin)} – ${formatGia(giaMax)}`,
+    gia_dieu_chinh_ly_do: dieuChinhLyDo.length > 0 ? dieuChinhLyDo.join(' • ') : null,
+    diem_chien_dau: diemChienDau,
+    risk_level: riskLevel,
+    risk_ly_do: riskLyDo,
+    canh_bao_benh: canhBaoBenh || null,
+  };
+}
+
+// ── ĐÁNH GIÁ CHIẾN ĐẤU bằng text ──
+function buildChienDauNhanXet(gaData: any): string | null {
+  if (!gaData) return null;
+  const tran = parseInt(gaData.thanh_tich_tran) || 0;
+  const thang = parseInt(gaData.thanh_tich_thang) || 0;
+  const tuoi = parseInt(gaData.tuoi) || 0;
+  const loai = gaData.loai;
+  const nguon = gaData.nguon_goc;
+
+  if (tran === 0 && tuoi === 0 && !loai) return null;
+
+  const parts: string[] = [];
+
+  if (loai) {
+    const loaiMap: Record<string, string> = {
+      ga_don: 'Gà đòn — chiến theo lối bền bỉ, hay dùng đòn đấm mổ liên tục.',
+      ga_cua: 'Gà cựa — đòn cựa hiểm, một đòn có thể kết liễu đối thủ.',
+      ga_tre: 'Gà tre — nhỏ con nhưng nhanh nhẹn, khó bắt được đòn.',
     };
-  };
+    parts.push(loaiMap[loai] || '');
+  }
 
-  const stopSpeech = () => { window.speechSynthesis?.cancel(); setSpeaking(false); };
+  if (tuoi > 0) {
+    if (tuoi < 10) parts.push(`Tuổi ${tuoi} tháng — gà tơ, đang trong giai đoạn phát triển.`);
+    else if (tuoi <= 24) parts.push(`Tuổi ${tuoi} tháng — độ tuổi chiến đấu tốt nhất.`);
+    else parts.push(`Tuổi ${tuoi} tháng — gà lớn tuổi, kinh nghiệm cao nhưng sức bền có thể giảm.`);
+  }
 
-  const speakResult = (r: any) => {
-    if (!r || !window.speechSynthesis) return;
-    stopSpeech();
-    const text = `Kết quả phân tích ${r.so_anh} ảnh. Điểm: ${r.tong_diem} trên 10. Độ tin cậy: ${r.do_tin_cay} phần trăm. Mắt: ${r.mat}. Chân: ${r.chan}. Kết luận vảy: ${r.vay_ket_luan}. ${r.vay_y_nghia}. ${r.chien_dau_nhan_xet ? 'Đánh giá chiến đấu: ' + r.chien_dau_nhan_xet : ''}. Nhận xét: ${r.nhan_xet_tong}. Giá đề xuất: ${r.gia_de_xuat} đồng.`;
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voices = window.speechSynthesis.getVoices();
-    const viVoice = voices.find(v => v.lang.includes('vi') || v.lang.includes('VI'));
-    if (viVoice) utterance.voice = viVoice;
-    utterance.lang = 'vi-VN'; utterance.rate = 0.9;
-    utterance.onstart = () => setSpeaking(true);
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(utterance);
-  };
+  if (tran > 0) {
+    const ty = Math.round((thang / tran) * 100);
+    parts.push(`Thành tích: ${thang} thắng / ${tran} trận (${ty}%). ${ty >= 70 ? 'Phong độ xuất sắc.' : ty >= 50 ? 'Phong độ ổn định.' : 'Phong độ cần cải thiện.'}`);
+  } else {
+    parts.push('Chưa qua thực chiến — chưa đánh giá được thực lực.');
+  }
 
-  const uploadedCount = images.filter(Boolean).length;
-  const filledCount = Object.values(gaData).filter(v => v !== '').length;
+  if (nguon) {
+    parts.push(nguon === 'ga_nha' ? 'Gà nhà nuôi — biết rõ nguồn gốc, ít rủi ro bệnh ẩn.' : 'Gà mua lại — cần kiểm tra kỹ lịch sử.');
+  }
 
-  const handleAnalyze = async () => {
-    if (uploadedCount === 0) return;
-    setLoading(true); setError(''); setStep(0); stopSpeech();
-    const interval = setInterval(() => {
-      setStep(prev => prev < LoadingSteps.length - 1 ? prev + 1 : prev);
-    }, 900);
-    try {
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ images, gaData }),
-      });
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) throw new Error(`Lỗi server (${res.status}). Vui lòng thử lại!`);
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || `Lỗi ${res.status}`);
-      setResult(data);
-      if (voiceOn) setTimeout(() => speakResult(data), 600);
-    } catch (err: any) {
-      setError(err?.message || 'Lỗi phân tích. Vui lòng thử lại!');
-    } finally { clearInterval(interval); setLoading(false); }
-  };
+  return parts.filter(Boolean).join(' ');
+}
 
-  const getDiemMau = (d: number) => d >= 8 ? 'text-green-600' : d >= 6.5 ? 'text-yellow-600' : 'text-red-500';
-  const getBarMau = (d: number) => d >= 8 ? 'bg-green-500' : d >= 6.5 ? 'bg-yellow-500' : 'bg-red-500';
-  const getVayStyle = (loai: string) =>
-    loai === 'tot' ? 'bg-green-50 border-green-300' :
-    loai === 'xau' ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200';
-  const getRiskStyle = (risk: string) =>
-    risk === 'thap' ? 'bg-green-100 text-green-700 border-green-200' :
-    risk === 'cao' ? 'bg-red-100 text-red-700 border-red-200' :
-    'bg-yellow-100 text-yellow-700 border-yellow-200';
-  const getRiskLabel = (risk: string) =>
-    risk === 'thap' ? '🟢 Rủi ro thấp' : risk === 'cao' ? '🔴 Rủi ro cao' : '🟡 Rủi ro trung bình';
+// ── PROMPT ──
+const SYSTEM_PROMPT = `Bạn là chuyên gia xem tướng gà chọi Việt Nam với bộ kiến thức 92 loại vảy chuẩn.
 
-  return (
-    <div className="max-w-4xl mx-auto px-4 py-4">
-      <video ref={videoRef} className="hidden" crossOrigin="anonymous" />
+NHIỆM VỤ: Quan sát và mô tả thực tế — KHÔNG tự đặt tên vảy.
 
-      {/* HEADER */}
-      <div className="bg-gradient-to-r from-[#8B1A1A] to-red-700 text-white rounded-xl p-5 mb-5 text-center">
-        <div className="text-4xl mb-1">🐓</div>
-        <h1 className="font-black text-xl mb-1">AI Tướng Gà — Sư Kê Ảo</h1>
-        <p className="text-red-200 text-xs mb-3">92 loại vảy chuẩn • Ảnh tự động nén • Không cần đúng thứ tự</p>
-        <button onClick={() => { setVoiceOn(!voiceOn); if (speaking) stopSpeech(); }}
-          className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition ${voiceOn ? 'bg-white text-[#8B1A1A] border-white' : 'bg-transparent text-white/60 border-white/30'}`}>
-          {voiceOn ? '🔊 Giọng đọc: BẬT' : '🔇 Giọng đọc: TẮT'}
-        </button>
-      </div>
+KIẾN THỨC VỊ TRÍ CHÂN GÀ:
+- Hàng Quách (Nội): theo ngón giữa đi thẳng lên gối
+- Hàng Thành (Ngoại): theo ngón ngoại đi thẳng lên gối
+- Hàng Hậu: mặt sau chân, 1 hàng vảy lớn
+- Hàng Độ: từ cựa lên đến gối
+- Hàng Kẽm: giữa hàng Hậu và hàng Độ (mặt trong)
+- Hàng Biên: giữa hàng Ngoại và hàng Hậu
 
-      <div className="grid md:grid-cols-2 gap-5">
-        {/* CỘT TRÁI */}
-        <div className="space-y-4">
+QUY TẮC:
+1. Tất cả ảnh là CÙNG 1 CON GÀ
+2. CHỈ mô tả vảy — KHÔNG đặt tên
+3. Nếu không rõ → nói rõ lý do
+4. Viết kiểu dân chơi gà miền Nam
+5. Nếu có dữ liệu gà (tuổi, thành tích, tình trạng) → kết hợp vào nhận xét tổng`;
 
-          {/* UPLOAD */}
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <div className="flex gap-2 mb-3">
-              <button onClick={() => { setVideoMode(false); setVideoFrames([]); }}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${!videoMode ? 'bg-[#8B1A1A] text-white' : 'bg-gray-100 text-gray-600'}`}>
-                📷 Upload ảnh
-              </button>
-              <button onClick={() => setVideoMode(true)}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${videoMode ? 'bg-[#8B1A1A] text-white' : 'bg-gray-100 text-gray-600'}`}>
-                🎬 Upload video
-              </button>
-            </div>
+function buildUserPrompt(gaData: any): string {
+  let gaInfo = '';
+  if (gaData) {
+    const parts: string[] = [];
+    if (gaData.loai) parts.push(`Loại: ${gaData.loai === 'ga_don' ? 'Gà đòn' : gaData.loai === 'ga_cua' ? 'Gà cựa' : 'Gà tre'}`);
+    if (gaData.tuoi) parts.push(`Tuổi: ${gaData.tuoi} tháng`);
+    if (gaData.can_nang) parts.push(`Cân nặng: ${gaData.can_nang} kg`);
+    if (gaData.thanh_tich_tran) parts.push(`Thành tích: ${gaData.thanh_tich_thang || 0} thắng / ${gaData.thanh_tich_tran} trận`);
+    if (gaData.tinh_trang) parts.push(`Tình trạng: ${gaData.tinh_trang === 'khoe' ? 'Khỏe mạnh' : gaData.tinh_trang === 'nghi_benh' ? 'Nghi bệnh' : 'Đang điều trị'}`);
+    if (gaData.nguon_goc) parts.push(`Nguồn gốc: ${gaData.nguon_goc === 'ga_nha' ? 'Gà nhà nuôi' : 'Mua lại'}`);
+    if (parts.length > 0) gaInfo = `\n\nThông tin chủ gà cung cấp:\n${parts.join('\n')}`;
+  }
 
-            {optimizing && (
-              <div className="flex items-center gap-2 text-orange-600 text-sm mb-3 bg-orange-50 p-2 rounded-lg">
-                <div className="w-4 h-4 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />
-                Đang tối ưu ảnh...
-              </div>
-            )}
+  return `Nhìn tất cả ảnh — đây là CÙNG 1 CON GÀ nhiều góc.${gaInfo}
 
-            {!videoMode && (
-              <>
-                <p className="text-xs text-gray-400 mb-3">Upload 1-4 ảnh — tự động nén, không lo dung lượng</p>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {[0,1,2,3].map(i => (
-                    <label key={i} className="cursor-pointer">
-                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImage(i, e)} />
-                      {images[i] ? (
-                        <div className="relative">
-                          <img src={images[i]!} alt="" className="w-full h-28 object-cover rounded-lg" loading="lazy" />
-                          <div className="absolute top-1 right-1 bg-green-500 rounded-full w-5 h-5 flex items-center justify-center text-white text-xs">✓</div>
-                          <div className="absolute bottom-1 left-1 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded">Ảnh {i+1}</div>
-                        </div>
-                      ) : (
-                        <div className="h-28 border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center justify-center hover:border-red-400 hover:bg-red-50 transition">
-                          <div className="text-xl mb-1">📷</div>
-                          <div className="text-xs text-gray-300">Ảnh {i+1}</div>
-                        </div>
-                      )}
-                    </label>
-                  ))}
-                </div>
-              </>
-            )}
+Trả về JSON thuần (không backtick, không markdown):
+{
+  "so_anh": số ảnh,
+  "nhan_dien_anh": "Ảnh 1: ... Ảnh 2: ...",
+  "do_ro_trung_binh": 0-100,
+  "phan_thay_ro": "...",
+  "phan_khong_ro": "...",
+  "mat": "mô tả mắt",
+  "chan": "mô tả chân",
+  "long_dang": "mô tả lông dáng",
+  "vay_quan_sat": "mô tả kỹ vảy theo thuật ngữ hàng Quách/Thành/Hậu/Độ/Kẽm — KHÔNG đặt tên vảy",
+  "hau_do_kem": "mô tả riêng hàng Hậu, Độ, Kẽm",
+  "diem_manh": "điểm mạnh ngoại hình",
+  "diem_han_che": "điểm yếu ngoại hình",
+  "nhan_xet_tong": "nhận xét tổng thể kiểu dân chơi gà${gaData && Object.values(gaData).some(v => v) ? ', kết hợp cả thông tin chủ gà cung cấp' : ''}"
+}`;
+}
 
-            {videoMode && (
-              <>
-                <p className="text-xs text-gray-400 mb-3">Upload video 5-15 giây — AI tự trích 4 frame</p>
-                <label className="block border-2 border-dashed border-gray-300 rounded-xl p-4 text-center cursor-pointer hover:border-red-400 hover:bg-red-50 transition mb-3">
-                  <input type="file" accept="video/*" className="hidden" onChange={handleVideo} />
-                  <div className="text-3xl mb-2">🎬</div>
-                  <div className="text-sm text-gray-500">Nhấn để chọn video</div>
-                  <div className="text-xs text-gray-400 mt-1">MP4, MOV • Tối ưu 5-15 giây</div>
-                </label>
-                {videoFrames.length > 0 && (
-                  <div>
-                    <div className="text-xs text-green-600 font-semibold mb-2">✓ Đã trích {videoFrames.length} frame</div>
-                    <div className="grid grid-cols-4 gap-1">
-                      {videoFrames.map((f, i) => (
-                        <img key={i} src={f} alt="" className="w-full h-16 object-cover rounded" loading="lazy" />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
+export async function POST(req: NextRequest) {
+  if (!process.env.OPENAI_API_KEY) {
+    return NextResponse.json({ error: 'Chưa cấu hình OPENAI_API_KEY trong .env.local' }, { status: 500 });
+  }
 
-            <div className="text-xs text-center mb-3">
-              <span className="text-gray-400">Sẵn sàng: {uploadedCount} ảnh</span>
-              {uploadedCount === 4 && <span className="text-blue-600 ml-1 font-semibold">🎯 Đủ 4 góc!</span>}
-            </div>
+  let body: any;
+  try { body = await req.json(); }
+  catch { return NextResponse.json({ error: 'Request body không hợp lệ' }, { status: 400 }); }
 
-            {uploadedCount > 0 && !loading && !optimizing && (
-              <button onClick={handleAnalyze}
-                className="w-full bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition">
-                🐓 Phân tích {uploadedCount} ảnh — đối chiếu 92 loại vảy
-                {filledCount > 0 && <span className="ml-1 text-red-200 font-normal text-xs">+ {filledCount} thông tin</span>}
-              </button>
-            )}
-            {uploadedCount > 0 && (
-              <button onClick={() => { setImages([null,null,null,null]); setVideoFrames([]); setResult(null); setError(''); stopSpeech(); }}
-                className="w-full mt-2 border border-gray-200 text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 transition">
-                🔄 Xóa tất cả
-              </button>
-            )}
-            {error && (
-              <div className="mt-2 bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg">❌ {error}</div>
-            )}
-          </div>
-
-          {/* FORM THÔNG TIN GÀ */}
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <button onClick={() => setShowForm(!showForm)}
-              className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition">
-              <div className="flex items-center gap-2">
-                <span className="text-base">📋</span>
-                <div>
-                  <div className="font-bold text-gray-800 text-sm">Thông tin gà <span className="text-gray-400 font-normal text-xs">(không bắt buộc)</span></div>
-                  <div className="text-xs">
-                    {filledCount > 0
-                      ? <span className="text-green-600 font-semibold">✓ Đã nhập {filledCount}/7 — AI phân tích chính xác hơn</span>
-                      : <span className="text-gray-400">Nhập thêm để AI định giá + đánh giá chiến đấu chính xác hơn</span>}
-                  </div>
-                </div>
-              </div>
-              <span className={`text-gray-400 text-xs transition-transform inline-block ${showForm ? 'rotate-180' : ''}`}>▼</span>
-            </button>
-
-            {showForm && (
-              <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
-
-                {/* Loại gà */}
-                <div>
-                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block">🐓 Loại gà</label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[{val:'ga_don',label:'Gà đòn'},{val:'ga_cua',label:'Gà cựa'},{val:'ga_tre',label:'Gà tre'}].map(opt => (
-                      <button key={opt.val}
-                        onClick={() => setGaData(p => ({...p, loai: p.loai === opt.val ? '' : opt.val}))}
-                        className={`py-1.5 rounded-lg text-xs font-bold border transition ${gaData.loai === opt.val ? 'bg-[#8B1A1A] text-white border-[#8B1A1A]' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-red-300'}`}>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Tuổi + Cân */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Tuổi (tháng)</label>
-                    <input type="number" min="1" max="120" value={gaData.tuoi}
-                      onChange={e => setGaData(p => ({...p, tuoi: e.target.value}))}
-                      placeholder="VD: 18"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600 mb-1 block">⚖️ Cân nặng (kg)</label>
-                    <input type="number" min="0.5" max="10" step="0.1" value={gaData.can_nang}
-                      onChange={e => setGaData(p => ({...p, can_nang: e.target.value}))}
-                      placeholder="VD: 2.5"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-400" />
-                  </div>
-                </div>
-
-                {/* Thành tích */}
-                <div>
-                  <label className="text-xs font-semibold text-gray-600 mb-1 block">⚔️ Thành tích chiến đấu</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" min="0" value={gaData.thanh_tich_tran}
-                      onChange={e => setGaData(p => ({...p, thanh_tich_tran: e.target.value}))}
-                      placeholder="Tổng số trận"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-400" />
-                    <input type="number" min="0" value={gaData.thanh_tich_thang}
-                      onChange={e => setGaData(p => ({...p, thanh_tich_thang: e.target.value}))}
-                      placeholder="Số trận thắng"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-400" />
-                  </div>
-                  {gaData.thanh_tich_tran && gaData.thanh_tich_thang && (() => {
-                    const tran = parseInt(gaData.thanh_tich_tran);
-                    const thang = parseInt(gaData.thanh_tich_thang);
-                    const ty = tran > 0 ? Math.round((thang/tran)*100) : 0;
-                    return (
-                      <div className={`mt-1 text-xs text-center font-semibold ${ty>=70?'text-green-600':ty>=50?'text-yellow-600':'text-red-500'}`}>
-                        Tỉ lệ thắng: {ty}% ({thang}/{tran} trận)
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Tình trạng */}
-                <div>
-                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block">❤️ Tình trạng sức khỏe</label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[
-                      {val:'khoe', label:'✅ Khỏe', active:'bg-green-600 text-white border-green-600'},
-                      {val:'nghi_benh', label:'⚠️ Nghi bệnh', active:'bg-yellow-500 text-white border-yellow-500'},
-                      {val:'dang_tri', label:'🏥 Đang trị', active:'bg-red-600 text-white border-red-600'},
-                    ].map(opt => (
-                      <button key={opt.val}
-                        onClick={() => setGaData(p => ({...p, tinh_trang: p.tinh_trang === opt.val ? '' : opt.val}))}
-                        className={`py-1.5 rounded-lg text-xs font-bold border transition ${gaData.tinh_trang === opt.val ? opt.active : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-300'}`}>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  {(gaData.tinh_trang === 'nghi_benh' || gaData.tinh_trang === 'dang_tri') && (
-                    <div className="mt-1.5 bg-red-50 border border-red-200 rounded-lg p-2 text-xs text-red-600">
-                      ⚠️ Gà bệnh → AI sẽ cảnh báo và tự động giảm giá đề xuất
-                    </div>
-                  )}
-                </div>
-
-                {/* Nguồn gốc */}
-                <div>
-                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block">🏠 Nguồn gốc</label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {[{val:'ga_nha',label:'🏠 Gà nhà nuôi'},{val:'mua_lai',label:'🛒 Mua lại'}].map(opt => (
-                      <button key={opt.val}
-                        onClick={() => setGaData(p => ({...p, nguon_goc: p.nguon_goc === opt.val ? '' : opt.val}))}
-                        className={`py-1.5 rounded-lg text-xs font-bold border transition ${gaData.nguon_goc === opt.val ? 'bg-[#8B1A1A] text-white border-[#8B1A1A]' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-red-300'}`}>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {filledCount > 0 && (
-                  <button onClick={() => setGaData({loai:'',tuoi:'',can_nang:'',thanh_tich_tran:'',thanh_tich_thang:'',tinh_trang:'',nguon_goc:''})}
-                    className="w-full text-xs text-gray-400 py-1.5 hover:text-red-400 transition">
-                    × Xóa thông tin đã nhập
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* TIPS */}
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-            <h3 className="font-bold text-amber-800 mb-2 text-sm">💡 Để AI xác định vảy chính xác</h3>
-            <div className="space-y-1 text-xs text-amber-700">
-              <div>📷 Ảnh chân rõ sát gối (Án Thiên/Phủ Địa)</div>
-              <div>📷 Ảnh rõ ngang cựa (Huyền Trâm/Song Phủ Đao)</div>
-              <div>📷 Ảnh rõ dưới ngón giữa (Ám Long)</div>
-              <div>📷 Ảnh toàn thân đứng tự nhiên</div>
-              <div className="text-amber-500 mt-1">🎬 Hoặc video 5-15 giây — AI tự trích frame</div>
-            </div>
-          </div>
-        </div>
-
-        {/* CỘT PHẢI — KẾT QUẢ */}
-        <div>
-          {loading && (
-            <div className="bg-white rounded-xl p-6 shadow-sm text-center">
-              <div className="text-5xl mb-4 animate-bounce">🐓</div>
-              <div className="font-bold text-gray-800 mb-1">{LoadingSteps[step]}</div>
-              <div className="text-xs text-gray-400 mb-3">
-                Đang xử lý {uploadedCount} ảnh{filledCount > 0 ? ` + ${filledCount} thông tin gà` : ''}...
-              </div>
-              <div className="flex gap-1 justify-center">
-                {LoadingSteps.map((_, i) => (
-                  <div key={i} className={`h-1.5 w-8 rounded-full transition-all ${i <= step ? 'bg-[#8B1A1A]' : 'bg-gray-200'}`} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {result && !loading && (
-            <div className="space-y-3">
-
-              {/* TỔNG ĐIỂM */}
-              <div className="bg-white rounded-xl p-4 shadow-sm">
-                <div className="flex justify-between items-start mb-1">
-                  <div>
-                    <h3 className="font-black text-gray-800">🏆 Kết luận sư kê</h3>
-                    <div className="text-xs text-gray-400">{result.so_anh} ảnh • Độ rõ: {result.do_ro}%</div>
-                  </div>
-                  <div className={`text-3xl font-black ${getDiemMau(result.tong_diem)}`}>{result.tong_diem}/10</div>
-                </div>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="flex-1 h-2 bg-gray-200 rounded-full">
-                    <div className={`h-2 ${getBarMau(result.tong_diem)} rounded-full`} style={{width:`${result.tong_diem*10}%`}} />
-                  </div>
-                  <span className="text-xs text-gray-500">Tin cậy: {result.do_tin_cay}%</span>
-                </div>
-
-                {/* Sub-scores nếu có data gà */}
-                {(result.diem_ngoai_hinh || result.diem_chien_dau) && (
-                  <div className="grid grid-cols-2 gap-2 mb-3">
-                    {result.diem_ngoai_hinh && (
-                      <div className="bg-blue-50 rounded-lg p-2 text-center">
-                        <div className="text-xs text-blue-600 font-semibold">👁 Ngoại hình</div>
-                        <div className={`text-xl font-black ${getDiemMau(result.diem_ngoai_hinh)}`}>{result.diem_ngoai_hinh}/10</div>
-                      </div>
-                    )}
-                    {result.diem_chien_dau && (
-                      <div className="bg-orange-50 rounded-lg p-2 text-center">
-                        <div className="text-xs text-orange-600 font-semibold">⚔️ Chiến đấu</div>
-                        <div className={`text-xl font-black ${getDiemMau(result.diem_chien_dau)}`}>{result.diem_chien_dau}/10</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {!speaking ? (
-                  <button onClick={() => speakResult(result)} className="w-full bg-green-600 text-white font-bold py-2 rounded-lg text-sm">
-                    🔊 Nghe sư kê đọc kết quả
-                  </button>
-                ) : (
-                  <button onClick={stopSpeech} className="w-full bg-gray-500 text-white font-bold py-2 rounded-lg text-sm animate-pulse">
-                    ⏹ Dừng đọc
-                  </button>
-                )}
-              </div>
-
-              {/* CẢNH BÁO BỆNH */}
-              {result.canh_bao_benh && (
-                <div className="bg-red-50 border-2 border-red-300 rounded-xl p-3">
-                  <div className="font-bold text-red-700 text-sm mb-1">🚨 Cảnh báo sức khỏe</div>
-                  <p className="text-sm text-red-600">{result.canh_bao_benh}</p>
-                </div>
-              )}
-
-              {/* AI NHẬN DIỆN */}
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                <div className="font-bold text-blue-700 text-xs mb-1">🔍 AI nhận diện từng ảnh</div>
-                <p className="text-xs text-gray-600">{result.nhan_dien_anh}</p>
-                {result.phan_thay_ro && <div className="mt-1 text-xs text-green-700"><b>Thấy rõ:</b> {result.phan_thay_ro}</div>}
-                {result.phan_khong_ro && <div className="mt-0.5 text-xs text-orange-600"><b>Chưa rõ:</b> {result.phan_khong_ro}</div>}
-              </div>
-
-              {/* NGOẠI HÌNH */}
-              <div className="bg-white border border-gray-100 rounded-xl p-3">
-                <div className="font-bold text-gray-700 text-sm mb-2">👁 Nhận diện ngoại hình</div>
-                <div className="space-y-1.5 text-sm text-gray-600">
-                  <div><b className="text-gray-700">Mắt:</b> {result.mat}</div>
-                  <div><b className="text-gray-700">Chân:</b> {result.chan}</div>
-                  <div><b className="text-gray-700">Lông/Dáng:</b> {result.long_dang}</div>
-                </div>
-              </div>
-
-              {/* CHIẾN ĐẤU (chỉ hiện khi có thông tin gà) */}
-              {result.chien_dau_nhan_xet && (
-                <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
-                  <div className="font-bold text-orange-700 text-sm mb-2">⚔️ Đánh giá chiến đấu</div>
-                  <p className="text-sm text-gray-600 mb-2">{result.chien_dau_nhan_xet}</p>
-                  {result.risk_level && (
-                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${getRiskStyle(result.risk_level)}`}>
-                      {getRiskLabel(result.risk_level)}
-                    </div>
-                  )}
-                  {result.risk_ly_do && <p className="text-xs text-gray-500 mt-1.5">{result.risk_ly_do}</p>}
-                </div>
-              )}
-
-              {/* VẢY */}
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-                <div className="font-bold text-yellow-700 text-sm mb-1">🐾 AI quan sát vảy</div>
-                <p className="text-sm text-gray-600 mb-2">{result.vay_quan_sat}</p>
-                {result.hau_do_kem && (
-                  <div className="text-xs text-gray-500 mb-2 bg-white rounded p-2 border border-yellow-100">
-                    <b>Hàng Hậu/Độ/Kẽm:</b> {result.hau_do_kem}
-                  </div>
-                )}
-                <div className={`rounded-lg p-2.5 border ${getVayStyle(result.vay_loai)}`}>
-                  <div className="font-bold text-sm">{result.vay_ket_luan}</div>
-                  {result.tin_cay_vay && <div className="text-xs text-gray-500 mt-0.5">Độ tin cậy: {result.tin_cay_vay}%</div>}
-                  <div className="text-xs mt-0.5 text-gray-600">{result.vay_y_nghia}</div>
-                </div>
-              </div>
-
-              {/* ĐIỂM MẠNH / HẠN CHẾ */}
-              <div className="grid grid-cols-2 gap-2">
-                {result.diem_manh && (
-                  <div className="bg-green-50 border border-green-100 rounded-xl p-3">
-                    <div className="font-bold text-green-700 text-xs mb-1">✅ Điểm mạnh</div>
-                    <p className="text-xs text-gray-600">{result.diem_manh}</p>
-                  </div>
-                )}
-                {result.diem_han_che && (
-                  <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">
-                    <div className="font-bold text-orange-700 text-xs mb-1">⚠️ Hạn chế</div>
-                    <p className="text-xs text-gray-600">{result.diem_han_che}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* NHẬN ĐỊNH AI */}
-              {result.nhan_xet_tong && (
-                <div className="bg-purple-50 border border-purple-100 rounded-xl p-3">
-                  <div className="font-bold text-purple-700 text-sm mb-1">🤖 Nhận định AI</div>
-                  <p className="text-sm text-gray-600 leading-relaxed">{result.nhan_xet_tong}</p>
-                </div>
-              )}
-
-              {/* GIÁ */}
-              <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-4">
-                <div className="text-xs font-bold text-gray-500 mb-1">💰 Giá tham khảo</div>
-                <div className="text-2xl font-black text-[#8B1A1A]">{result.gia_de_xuat} đ</div>
-                <p className="text-xs text-gray-500 mt-0.5">{result.ly_do_gia}</p>
-                {result.gia_dieu_chinh_ly_do && (
-                  <div className="mt-1.5 text-xs bg-white rounded-lg p-2 border border-yellow-100">
-                    <b className="text-orange-600">Điều chỉnh:</b> {result.gia_dieu_chinh_ly_do}
-                  </div>
-                )}
-                <p className="text-xs text-gray-400 italic mt-1">*Tham khảo thị trường, không phải giá cam kết</p>
-              </div>
-
-              {/* CẦN BỔ SUNG */}
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                <div className="font-bold text-gray-600 text-sm mb-1">📋 Cần bổ sung</div>
-                <p className="text-sm text-gray-500">{result.yeu_cau_bo_sung}</p>
-              </div>
-
-              <p className="text-xs text-gray-400 text-center italic">{result.canh_bao}</p>
-
-              <div className="flex gap-3">
-                <a href="/dang-ga" className="flex-1 bg-[#8B1A1A] text-white font-bold py-3 rounded-xl text-sm text-center">
-                  📋 Đăng bán ngay
-                </a>
-                <button onClick={() => { setImages([null,null,null,null]); setVideoFrames([]); setResult(null); stopSpeech(); }}
-                  className="flex-1 border border-gray-300 text-gray-600 font-bold py-3 rounded-xl text-sm">
-                  🔄 Phân tích gà khác
-                </button>
-              </div>
-            </div>
-          )}
-
-          {uploadedCount === 0 && !loading && !result && (
-            <div className="bg-white rounded-xl p-6 shadow-sm text-center h-64 flex flex-col items-center justify-center">
-              <div className="text-5xl mb-3">🐓</div>
-              <div className="font-semibold text-gray-500">Upload ảnh hoặc video để phân tích</div>
-              <div className="text-sm text-gray-400 mt-1">AI đối chiếu 92 loại vảy chuẩn dân chơi</div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+  const validImages: string[] = (body.images || []).filter(
+    (img: any) => typeof img === 'string' && img.startsWith('data:image')
   );
+  if (validImages.length === 0) {
+    return NextResponse.json({ error: 'Cần ít nhất 1 ảnh hợp lệ.' }, { status: 400 });
+  }
+
+  // gaData từ client (có thể null/undefined nếu không nhập)
+  const gaData = body.gaData && Object.values(body.gaData).some(v => v !== '') ? body.gaData : null;
+
+  const content: any[] = [{ type: 'text', text: buildUserPrompt(gaData) }];
+  validImages.forEach((img, i) => {
+    content.push({ type: 'text', text: `--- Ảnh ${i + 1} ---` });
+    content.push({ type: 'image_url', image_url: { url: img, detail: 'high' } });
+  });
+
+  let response: any;
+  try {
+    response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      max_tokens: 1800,
+      temperature: 0.8,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content },
+      ],
+    });
+  } catch (apiErr: any) {
+    const msg: string = apiErr?.message || '';
+    console.error('OpenAI error:', msg);
+    if (msg.includes('401') || msg.includes('invalid_api_key')) return NextResponse.json({ error: 'OPENAI_API_KEY không hợp lệ.' }, { status: 401 });
+    if (msg.includes('429') || msg.includes('rate_limit')) return NextResponse.json({ error: 'Quá nhiều yêu cầu. Thử lại sau.' }, { status: 429 });
+    if (msg.includes('insufficient_quota') || msg.includes('billing')) return NextResponse.json({ error: 'Tài khoản OpenAI hết credits.' }, { status: 402 });
+    return NextResponse.json({ error: `Lỗi OpenAI: ${msg.slice(0, 200)}` }, { status: 500 });
+  }
+
+  const raw = response.choices?.[0]?.message?.content || '';
+  let ai: any;
+  const attempts = [
+    raw,
+    raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim(),
+    (raw.match(/\{[\s\S]*\}/) || [])[0] || '',
+  ];
+  for (const attempt of attempts) {
+    if (!attempt) continue;
+    try { ai = JSON.parse(attempt); break; } catch { /* next */ }
+  }
+  if (!ai) {
+    return NextResponse.json({ error: 'AI trả về định dạng không hợp lệ. Vui lòng thử lại.' }, { status: 500 });
+  }
+
+  // ── Tính toán ──
+  const vayText = `${ai.vay_quan_sat || ''} ${ai.hau_do_kem || ''}`;
+  const mappedVay = mapVayFromDescription(vayText);
+  const doRo = typeof ai.do_ro_trung_binh === 'number' ? ai.do_ro_trung_binh : 60;
+  const diemNgoaiHinh = tinhDiem(ai.mat || '', ai.chan || '', ai.long_dang || '', mappedVay, doRo);
+  const doTinCay = Math.min(90, Math.round(doRo * 0.5 + mappedVay.tin_cay * 0.5));
+
+  // ── Rule-based ──
+  const rule = tinhGiaVaRule(diemNgoaiHinh, mappedVay, gaData);
+  const chienDauNhanXet = buildChienDauNhanXet(gaData);
+
+  // ── Điểm tổng hợp ──
+  let tongDiem = diemNgoaiHinh;
+  if (rule.diem_chien_dau !== null) {
+    tongDiem = Math.round((diemNgoaiHinh * 0.6 + rule.diem_chien_dau * 0.4) * 10) / 10;
+  }
+
+  return NextResponse.json({
+    so_anh: validImages.length,
+    nhan_dien_anh: ai.nhan_dien_anh || '',
+    do_ro: doRo,
+    phan_thay_ro: ai.phan_thay_ro || '',
+    phan_khong_ro: ai.phan_khong_ro || '',
+    mat: ai.mat || '',
+    chan: ai.chan || '',
+    long_dang: ai.long_dang || '',
+    vay_quan_sat: ai.vay_quan_sat || '',
+    hau_do_kem: ai.hau_do_kem || '',
+    diem_manh: ai.diem_manh || '',
+    diem_han_che: ai.diem_han_che || '',
+    nhan_xet_tong: ai.nhan_xet_tong || '',
+
+    // Điểm
+    tong_diem: tongDiem,
+    diem_ngoai_hinh: diemNgoaiHinh,
+    diem_chien_dau: rule.diem_chien_dau,
+    do_tin_cay: doTinCay,
+
+    // Vảy
+    vay_ten: mappedVay.ten,
+    vay_loai: mappedVay.loai,
+    vay_ket_luan: mappedVay.ten
+      ? `${mappedVay.loai === 'xau' ? '⚠️' : '✅'} Phát hiện: ${mappedVay.ten}`
+      : '📊 Vảy phổ thông — không phát hiện vảy quý hay vảy xấu trong 92 loại',
+    vay_y_nghia: mappedVay.y_nghia,
+    tin_cay_vay: mappedVay.tin_cay,
+
+    // Giá + rule
+    gia_de_xuat: rule.gia_de_xuat,
+    gia_dieu_chinh_ly_do: rule.gia_dieu_chinh_ly_do,
+    ly_do_gia: `Điểm ngoại hình ${diemNgoaiHinh}/10 — ${mappedVay.ten ? `phát hiện ${mappedVay.ten} (${mappedVay.tin_cay}%)` : 'vảy phổ thông'} — độ rõ ${doRo}%`,
+
+    // Chiến đấu + risk
+    chien_dau_nhan_xet: chienDauNhanXet,
+    risk_level: rule.risk_level,
+    risk_ly_do: rule.risk_ly_do,
+    canh_bao_benh: rule.canh_bao_benh,
+
+    // Bổ sung
+    yeu_cau_bo_sung: doRo < 70
+      ? `Cần ảnh rõ hơn: ${ai.phan_khong_ro || 'ảnh chân sát gối, ngang cựa, dưới ngón giữa'}`
+      : validImages.length < 3
+        ? `Có ${validImages.length}/4 ảnh. Thêm ảnh để phân tích chính xác hơn.`
+        : !gaData
+          ? 'Nhập thêm thông tin gà (tuổi, thành tích, tình trạng) để AI định giá chính xác hơn.'
+          : 'Ảnh và thông tin đủ tốt. Có video đá thử càng chính xác hơn.',
+    canh_bao: 'Nhận định AI từ hình ảnh — không phải đánh giá thực chiến. Giá tham khảo thị trường.',
+  });
 }
