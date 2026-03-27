@@ -137,7 +137,7 @@ function ModalMuaNgay({ ga, nguoiBan, currentUser, onClose }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-[80] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/80 z-[60] flex items-start justify-center pt-4 p-2 md:items-center md:pt-0 md:p-4 overflow-y-auto" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
 
         {/* HEADER */}
