@@ -2,8 +2,62 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { createClient } from '@supabase/supabase-js';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ── Rate limit: 5 lần/IP/ngày ──
+const RATE_LIMIT = 5;
+
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+
+function getIP(req: NextRequest): string {
+  return (
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    req.headers.get('x-real-ip') ||
+    'unknown'
+  );
+}
+
+async function checkAndIncrement(ip: string): Promise<{ allowed: boolean; remaining: number }> {
+  const supabase = getSupabase();
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Lấy record hiện tại
+  const { data: existing } = await supabase
+    .from('ai_rate_limit')
+    .select('count')
+    .eq('ip', ip)
+    .eq('date', today)
+    .single();
+
+  if (!existing) {
+    // Chưa có → insert mới count=1
+    await supabase.from('ai_rate_limit').insert({ ip, date: today, count: 1 });
+    return { allowed: true, remaining: RATE_LIMIT - 1 };
+  }
+
+  const currentCount = existing.count ?? 0;
+
+  if (currentCount >= RATE_LIMIT) {
+    // Đã hết lượt
+    return { allowed: false, remaining: 0 };
+  }
+
+  // Tăng count
+  await supabase
+    .from('ai_rate_limit')
+    .update({ count: currentCount + 1 })
+    .eq('ip', ip)
+    .eq('date', today);
+
+  return { allowed: true, remaining: RATE_LIMIT - (currentCount + 1) };
+}
 
 // ===== TỪ ĐIỂN 92 VẢY =====
 const VAY_DATABASE = {
@@ -82,13 +136,7 @@ function tinhDiem(mat: string, chan: string, longDang: string, mappedVay: Return
   return Math.round(Math.max(3.0, Math.min(10.0, s)) * 10) / 10;
 }
 
-// ── RULE-BASED GIÁ (có tích hợp gaData) ──
-function tinhGiaVaRule(
-  diemNgoaiHinh: number,
-  mappedVay: ReturnType<typeof mapVayFromDescription>,
-  gaData?: any
-) {
-  // Giá base từ ngoại hình + vảy
+function tinhGiaVaRule(diemNgoaiHinh: number, mappedVay: ReturnType<typeof mapVayFromDescription>, gaData?: any) {
   let giaMin: number;
   let giaMax: number;
   if (mappedVay.loai === 'xau') { giaMin = 500_000; giaMax = 1_500_000; }
@@ -111,63 +159,47 @@ function tinhGiaVaRule(
     const can = parseFloat(gaData.can_nang) || 0;
     const tyLeThang = tran > 0 ? thang / tran : 0;
 
-    // ── RULE 1: Bệnh → cảnh báo + giảm giá mạnh ──
     if (gaData.tinh_trang === 'nghi_benh') {
-      giaMin = Math.round(giaMin * 0.5);
-      giaMax = Math.round(giaMax * 0.5);
+      giaMin = Math.round(giaMin * 0.5); giaMax = Math.round(giaMax * 0.5);
       dieuChinhLyDo.push('⚠️ Nghi bệnh: giảm 50% giá');
       canhBaoBenh = 'Gà đang nghi bệnh. Cần kiểm tra kỹ trước khi mua bán. Người mua nên yêu cầu giám định thú y.';
-      riskLevel = 'cao';
-      riskLyDo = 'Tình trạng sức khỏe chưa rõ ràng — rủi ro cao khi đầu tư.';
+      riskLevel = 'cao'; riskLyDo = 'Tình trạng sức khỏe chưa rõ ràng — rủi ro cao khi đầu tư.';
     }
     if (gaData.tinh_trang === 'dang_tri') {
-      giaMin = Math.round(giaMin * 0.4);
-      giaMax = Math.round(giaMax * 0.4);
+      giaMin = Math.round(giaMin * 0.4); giaMax = Math.round(giaMax * 0.4);
       dieuChinhLyDo.push('🏥 Đang điều trị: giảm 60% giá');
       canhBaoBenh = 'Gà đang trong quá trình điều trị bệnh. Chưa đánh giá được thực lực. Không nên giao dịch vội.';
-      riskLevel = 'cao';
-      riskLyDo = 'Gà đang bệnh — không thể đánh giá thực lực, rủi ro rất cao.';
+      riskLevel = 'cao'; riskLyDo = 'Gà đang bệnh — không thể đánh giá thực lực, rủi ro rất cao.';
     }
 
-    // ── RULE 2: Thành tích tốt → tăng giá ──
     if (tran > 0) {
       if (thang >= 5 && tyLeThang >= 0.7) {
-        giaMin = Math.round(giaMin * 1.35);
-        giaMax = Math.round(giaMax * 1.35);
+        giaMin = Math.round(giaMin * 1.35); giaMax = Math.round(giaMax * 1.35);
         dieuChinhLyDo.push(`🏆 Thành tích xuất sắc ${thang}/${tran} (${Math.round(tyLeThang*100)}%): +35% giá`);
-        riskLevel = 'thap';
-        riskLyDo = `Tỉ lệ thắng ${Math.round(tyLeThang*100)}% qua ${tran} trận — đã được kiểm chứng thực chiến.`;
+        riskLevel = 'thap'; riskLyDo = `Tỉ lệ thắng ${Math.round(tyLeThang*100)}% qua ${tran} trận — đã được kiểm chứng thực chiến.`;
       } else if (thang >= 3 && tyLeThang >= 0.5) {
-        giaMin = Math.round(giaMin * 1.15);
-        giaMax = Math.round(giaMax * 1.15);
+        giaMin = Math.round(giaMin * 1.15); giaMax = Math.round(giaMax * 1.15);
         dieuChinhLyDo.push(`⚔️ Có thành tích ${thang}/${tran} trận: +15% giá`);
-        riskLevel = 'thap';
-        riskLyDo = `Đã có ${tran} trận chiến, tỉ lệ thắng ${Math.round(tyLeThang*100)}% — mức rủi ro thấp.`;
+        riskLevel = 'thap'; riskLyDo = `Đã có ${tran} trận chiến, tỉ lệ thắng ${Math.round(tyLeThang*100)}% — mức rủi ro thấp.`;
       } else if (tyLeThang < 0.4 && tran >= 3) {
-        giaMin = Math.round(giaMin * 0.85);
-        giaMax = Math.round(giaMax * 0.85);
+        giaMin = Math.round(giaMin * 0.85); giaMax = Math.round(giaMax * 0.85);
         dieuChinhLyDo.push(`📉 Thành tích yếu ${thang}/${tran} trận: -15% giá`);
-        riskLevel = 'trung_binh';
-        riskLyDo = `Tỉ lệ thắng chỉ ${Math.round(tyLeThang*100)}% — cần xem lại phong độ.`;
+        riskLevel = 'trung_binh'; riskLyDo = `Tỉ lệ thắng chỉ ${Math.round(tyLeThang*100)}% — cần xem lại phong độ.`;
       }
-
       diemChienDau = Math.min(10, Math.max(3, Math.round((tyLeThang * 6 + (thang >= 5 ? 2 : thang >= 3 ? 1 : 0)) * 10) / 10));
     }
 
-    // ── RULE 3: Gà tơ chưa đá ──
     if (tuoi > 0 && tuoi < 10 && tran === 0) {
       if (riskLevel !== 'cao') riskLevel = 'trung_binh';
       riskLyDo = `Gà tơ ${tuoi} tháng chưa qua thực chiến — tiềm năng chưa được kiểm chứng.`;
       dieuChinhLyDo.push(`🐣 Gà tơ ${tuoi} tháng chưa đá: đánh giá rủi ro trung bình`);
     }
 
-    // ── RULE 4: Cân nặng bất thường ──
     if (can > 0 && (can < 1.5 || can > 5.5)) {
       if (riskLevel === 'thap') riskLevel = 'trung_binh';
       dieuChinhLyDo.push(`⚖️ Cân nặng ${can}kg bất thường — cần kiểm tra thêm`);
     }
   } else {
-    // Không có data → gà tơ chưa biết
     riskLevel = 'trung_binh';
     riskLyDo = 'Chưa có thông tin thành tích — không thể đánh giá rủi ro đầy đủ.';
   }
@@ -187,7 +219,6 @@ function tinhGiaVaRule(
   };
 }
 
-// ── ĐÁNH GIÁ CHIẾN ĐẤU bằng text ──
 function buildChienDauNhanXet(gaData: any): string | null {
   if (!gaData) return null;
   const tran = parseInt(gaData.thanh_tich_tran) || 0;
@@ -195,11 +226,8 @@ function buildChienDauNhanXet(gaData: any): string | null {
   const tuoi = parseInt(gaData.tuoi) || 0;
   const loai = gaData.loai;
   const nguon = gaData.nguon_goc;
-
   if (tran === 0 && tuoi === 0 && !loai) return null;
-
   const parts: string[] = [];
-
   if (loai) {
     const loaiMap: Record<string, string> = {
       ga_don: 'Gà đòn — chiến theo lối bền bỉ, hay dùng đòn đấm mổ liên tục.',
@@ -208,28 +236,23 @@ function buildChienDauNhanXet(gaData: any): string | null {
     };
     parts.push(loaiMap[loai] || '');
   }
-
   if (tuoi > 0) {
     if (tuoi < 10) parts.push(`Tuổi ${tuoi} tháng — gà tơ, đang trong giai đoạn phát triển.`);
     else if (tuoi <= 24) parts.push(`Tuổi ${tuoi} tháng — độ tuổi chiến đấu tốt nhất.`);
     else parts.push(`Tuổi ${tuoi} tháng — gà lớn tuổi, kinh nghiệm cao nhưng sức bền có thể giảm.`);
   }
-
   if (tran > 0) {
     const ty = Math.round((thang / tran) * 100);
     parts.push(`Thành tích: ${thang} thắng / ${tran} trận (${ty}%). ${ty >= 70 ? 'Phong độ xuất sắc.' : ty >= 50 ? 'Phong độ ổn định.' : 'Phong độ cần cải thiện.'}`);
   } else {
     parts.push('Chưa qua thực chiến — chưa đánh giá được thực lực.');
   }
-
   if (nguon) {
     parts.push(nguon === 'ga_nha' ? 'Gà nhà nuôi — biết rõ nguồn gốc, ít rủi ro bệnh ẩn.' : 'Gà mua lại — cần kiểm tra kỹ lịch sử.');
   }
-
   return parts.filter(Boolean).join(' ');
 }
 
-// ── PROMPT ──
 const SYSTEM_PROMPT = `Bạn là chuyên gia xem tướng gà chọi Việt Nam với bộ kiến thức 92 loại vảy chuẩn.
 
 NHIỆM VỤ: Quan sát và mô tả thực tế — KHÔNG tự đặt tên vảy.
@@ -261,7 +284,6 @@ function buildUserPrompt(gaData: any): string {
     if (gaData.nguon_goc) parts.push(`Nguồn gốc: ${gaData.nguon_goc === 'ga_nha' ? 'Gà nhà nuôi' : 'Mua lại'}`);
     if (parts.length > 0) gaInfo = `\n\nThông tin chủ gà cung cấp:\n${parts.join('\n')}`;
   }
-
   return `Nhìn tất cả ảnh — đây là CÙNG 1 CON GÀ nhiều góc.${gaInfo}
 
 Trả về JSON thuần (không backtick, không markdown):
@@ -278,13 +300,28 @@ Trả về JSON thuần (không backtick, không markdown):
   "hau_do_kem": "mô tả riêng hàng Hậu, Độ, Kẽm",
   "diem_manh": "điểm mạnh ngoại hình",
   "diem_han_che": "điểm yếu ngoại hình",
-  "nhan_xet_tong": "nhận xét tổng thể kiểu dân chơi gà${gaData && Object.values(gaData).some(v => v) ? ', kết hợp cả thông tin chủ gà cung cấp' : ''}"
+  "nhan_xet_tong": "nhận xét tổng thể kiểu dân chơi gà"
 }`;
 }
 
 export async function POST(req: NextRequest) {
   if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ error: 'Chưa cấu hình OPENAI_API_KEY trong .env.local' }, { status: 500 });
+    return NextResponse.json({ error: 'Chưa cấu hình OPENAI_API_KEY' }, { status: 500 });
+  }
+
+  // ── RATE LIMIT ──
+  const ip = getIP(req);
+  try {
+    const { allowed, remaining } = await checkAndIncrement(ip);
+    if (!allowed) {
+      return NextResponse.json({
+        error: `⏰ Bạn đã dùng hết ${RATE_LIMIT} lượt phân tích hôm nay. Vui lòng quay lại vào ngày mai!`,
+      }, { status: 429 });
+    }
+    // Có thể log remaining nếu muốn
+  } catch (e) {
+    // Nếu rate limit lỗi (DB lỗi) → vẫn cho qua, không chặn user
+    console.warn('Rate limit check failed, allowing request:', e);
   }
 
   let body: any;
@@ -298,7 +335,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Cần ít nhất 1 ảnh hợp lệ.' }, { status: 400 });
   }
 
-  // gaData từ client (có thể null/undefined nếu không nhập)
   const gaData = body.gaData && Object.values(body.gaData).some(v => v !== '') ? body.gaData : null;
 
   const content: any[] = [{ type: 'text', text: buildUserPrompt(gaData) }];
@@ -342,18 +378,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'AI trả về định dạng không hợp lệ. Vui lòng thử lại.' }, { status: 500 });
   }
 
-  // ── Tính toán ──
   const vayText = `${ai.vay_quan_sat || ''} ${ai.hau_do_kem || ''}`;
   const mappedVay = mapVayFromDescription(vayText);
   const doRo = typeof ai.do_ro_trung_binh === 'number' ? ai.do_ro_trung_binh : 60;
   const diemNgoaiHinh = tinhDiem(ai.mat || '', ai.chan || '', ai.long_dang || '', mappedVay, doRo);
   const doTinCay = Math.min(90, Math.round(doRo * 0.5 + mappedVay.tin_cay * 0.5));
 
-  // ── Rule-based ──
   const rule = tinhGiaVaRule(diemNgoaiHinh, mappedVay, gaData);
   const chienDauNhanXet = buildChienDauNhanXet(gaData);
 
-  // ── Điểm tổng hợp ──
   let tongDiem = diemNgoaiHinh;
   if (rule.diem_chien_dau !== null) {
     tongDiem = Math.round((diemNgoaiHinh * 0.6 + rule.diem_chien_dau * 0.4) * 10) / 10;
@@ -373,14 +406,10 @@ export async function POST(req: NextRequest) {
     diem_manh: ai.diem_manh || '',
     diem_han_che: ai.diem_han_che || '',
     nhan_xet_tong: ai.nhan_xet_tong || '',
-
-    // Điểm
     tong_diem: tongDiem,
     diem_ngoai_hinh: diemNgoaiHinh,
     diem_chien_dau: rule.diem_chien_dau,
     do_tin_cay: doTinCay,
-
-    // Vảy
     vay_ten: mappedVay.ten,
     vay_loai: mappedVay.loai,
     vay_ket_luan: mappedVay.ten
@@ -388,19 +417,13 @@ export async function POST(req: NextRequest) {
       : '📊 Vảy phổ thông — không phát hiện vảy quý hay vảy xấu trong 92 loại',
     vay_y_nghia: mappedVay.y_nghia,
     tin_cay_vay: mappedVay.tin_cay,
-
-    // Giá + rule
     gia_de_xuat: rule.gia_de_xuat,
     gia_dieu_chinh_ly_do: rule.gia_dieu_chinh_ly_do,
     ly_do_gia: `Điểm ngoại hình ${diemNgoaiHinh}/10 — ${mappedVay.ten ? `phát hiện ${mappedVay.ten} (${mappedVay.tin_cay}%)` : 'vảy phổ thông'} — độ rõ ${doRo}%`,
-
-    // Chiến đấu + risk
     chien_dau_nhan_xet: chienDauNhanXet,
     risk_level: rule.risk_level,
     risk_ly_do: rule.risk_ly_do,
     canh_bao_benh: rule.canh_bao_benh,
-
-    // Bổ sung
     yeu_cau_bo_sung: doRo < 70
       ? `Cần ảnh rõ hơn: ${ai.phan_khong_ro || 'ảnh chân sát gối, ngang cựa, dưới ngón giữa'}`
       : validImages.length < 3
