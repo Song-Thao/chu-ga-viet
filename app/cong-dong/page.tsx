@@ -27,6 +27,18 @@ function getYoutubeId(raw: string): string | null {
   return null;
 }
 
+// ✅ Detect Facebook video link
+function getFacebookVideoUrl(raw: string): string | null {
+  if (!raw) return null;
+  const isFb =
+    raw.includes('facebook.com/watch') ||
+    raw.includes('facebook.com/share/v/') ||
+    raw.includes('fb.watch') ||
+    raw.includes('facebook.com/video') ||
+    raw.includes('facebook.com/reel');
+  return isFb ? raw.trim() : null;
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (diff < 60) return 'vừa xong';
@@ -79,10 +91,10 @@ interface Banner {
   link: string;
 }
 
-const PAGE_SIZE = 10; // Load 10 bài mỗi lần thay vì 30
+const PAGE_SIZE = 10;
 
 // ============================================================
-// MEDIA GRID — dùng Next/Image
+// MEDIA GRID
 // ============================================================
 function MediaGrid({ images, priority = false }: { images: string[]; priority?: boolean }) {
   const imgs = images.slice(0, 3);
@@ -91,19 +103,11 @@ function MediaGrid({ images, priority = false }: { images: string[]; priority?: 
   if (imgs.length === 1) {
     return (
       <div style={{ position: 'relative', width: '100%', height: 300, background: '#000' }}>
-        <Image
-          src={imgs[0]}
-          alt="ảnh bài đăng"
-          fill
-          className="object-cover"
-          sizes="(max-width: 640px) 100vw, 600px"
-          priority={priority}
-          loading={priority ? 'eager' : 'lazy'}
-        />
+        <Image src={imgs[0]} alt="ảnh bài đăng" fill className="object-cover"
+          sizes="(max-width: 640px) 100vw, 600px" priority={priority} loading={priority ? 'eager' : 'lazy'} />
       </div>
     );
   }
-
   if (imgs.length === 2) {
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, height: 240 }}>
@@ -115,7 +119,6 @@ function MediaGrid({ images, priority = false }: { images: string[]; priority?: 
       </div>
     );
   }
-
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 2, height: 280 }}>
       <div style={{ position: 'relative', overflow: 'hidden', background: '#000' }}>
@@ -184,8 +187,7 @@ function FloatingVideoPopup({ ytId, onClose, startX, startY, popupW }: {
       <div
         onMouseDown={e => { dragging.current = true; dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y }; e.preventDefault(); }}
         onTouchStart={e => { dragging.current = true; const t = e.touches[0]; dragOffset.current = { x: t.clientX - pos.x, y: t.clientY - pos.y }; }}
-        style={{ height: 32, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', cursor: 'grab', userSelect: 'none', touchAction: 'none' }}
-      >
+        style={{ height: 32, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', cursor: 'grab', userSelect: 'none', touchAction: 'none' }}>
         <span style={{ color: '#777', fontSize: 10 }}>⠿ Kéo</span>
         <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', borderRadius: '50%', color: '#fff', width: 22, height: 22, cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
       </div>
@@ -202,7 +204,7 @@ function FloatingVideoPopup({ ytId, onClose, startX, startY, popupW }: {
 }
 
 // ============================================================
-// VIDEO POST
+// VIDEO POST — YouTube
 // ============================================================
 function VideoPost({ ytId }: { ytId: string }) {
   const [popup, setPopup] = useState<{ x: number; y: number; w: number } | null>(null);
@@ -223,13 +225,8 @@ function VideoPost({ ytId }: { ytId: string }) {
       {popup && <FloatingVideoPopup ytId={ytId} onClose={() => setPopup(null)} startX={popup.x} startY={popup.y} popupW={popup.w} />}
       <div ref={ref} onClick={openPopup}
         style={{ paddingBottom: '52%', position: 'relative', background: '#111', cursor: 'pointer', maxHeight: 280, overflow: 'hidden' }}>
-        <img
-          src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
-          loading="lazy"
-          decoding="async"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-          alt="video"
-        />
+        <img src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`} loading="lazy" decoding="async"
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} alt="video" />
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: 48, height: 48, background: 'rgba(0,0,0,0.65)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: 0, height: 0, borderStyle: 'solid', borderWidth: '9px 0 9px 18px', borderColor: 'transparent transparent transparent #fff', marginLeft: 3 }} />
@@ -237,6 +234,55 @@ function VideoPost({ ytId }: { ytId: string }) {
         </div>
       </div>
     </>
+  );
+}
+
+// ============================================================
+// ✅ VIDEO POST — Facebook (NEW)
+// ============================================================
+function FacebookVideoPost({ url }: { url: string }) {
+  const [show, setShow] = useState(false);
+  const encodedUrl = encodeURIComponent(url);
+  const embedSrc = `https://www.facebook.com/plugins/video.php?href=${encodedUrl}&show_text=false&width=560&mute=0`;
+
+  if (!show) {
+    return (
+      <div
+        onClick={() => setShow(true)}
+        style={{
+          position: 'relative', background: '#1877f2', cursor: 'pointer',
+          height: 220, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 10,
+        }}
+      >
+        {/* Facebook logo placeholder */}
+        <div style={{ width: 56, height: 56, background: 'rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>
+          f
+        </div>
+        <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Video Facebook</div>
+        <div style={{
+          background: 'rgba(255,255,255,0.25)', borderRadius: 20,
+          padding: '6px 18px', color: '#fff', fontSize: 13, fontWeight: 600,
+        }}>
+          ▶ Nhấn để xem
+        </div>
+        <div style={{ position: 'absolute', bottom: 8, fontSize: 10, color: 'rgba(255,255,255,0.6)' }}>
+          {url.length > 50 ? url.slice(0, 50) + '...' : url}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: 'relative', background: '#000', paddingBottom: '56.25%' }}>
+      <iframe
+        src={embedSrc}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
+        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+        allowFullScreen
+        scrolling="no"
+      />
+    </div>
   );
 }
 
@@ -353,6 +399,9 @@ interface PostCardProps {
 
 function PostCard({ post, comments, liked, expanded, commentInput, currentUserAvatar, currentUserId, priority = false, onLike, onToggleComments, onCommentChange, onCommentSubmit, onShare, onReport, onDelete }: PostCardProps) {
   const ytId = getYoutubeId(post.youtube_url);
+  // ✅ Detect Facebook nếu không phải YouTube
+  const fbUrl = !ytId ? getFacebookVideoUrl(post.youtube_url) : null;
+
   const avatarUrl = post.profiles?.avatar_url
     || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.profiles?.full_name || 'U')}&background=8B0000&color=fff`;
   const name = post.profiles?.full_name || 'Người dùng';
@@ -367,7 +416,6 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
       {/* Header */}
       <div style={{ padding: '10px 12px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* Avatar dùng <img> thường vì ui-avatars không trong remotePatterns */}
           <img src={avatarUrl} loading="lazy" decoding="async"
             style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #e4e6ea', flexShrink: 0, objectFit: 'cover' }}
             alt={name} />
@@ -381,9 +429,10 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
 
       {postText.length > 0 && <PostContent text={postText} />}
 
-      {/* Media — priority cho bài đầu tiên */}
+      {/* ✅ Media — ưu tiên: ảnh > YouTube > Facebook */}
       {images.length > 0 && <MediaGrid images={images} priority={priority} />}
-      {ytId && !images.length && <VideoPost ytId={ytId} />}
+      {!images.length && ytId && <VideoPost ytId={ytId} />}
+      {!images.length && !ytId && fbUrl && <FacebookVideoPost url={fbUrl} />}
 
       {/* Counts */}
       {(likeCount > 0 || post.comment_count > 0) && (
@@ -495,6 +544,10 @@ function CreatePostModal({ user, userAvatar, userName, onSubmit, onClose }: {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
+  // ✅ Preview video khi nhập link
+  const ytIdPreview = getYoutubeId(postYoutube);
+  const fbUrlPreview = !ytIdPreview ? getFacebookVideoUrl(postYoutube) : null;
+
   function handleImages(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []).slice(0, 3);
     setImageFiles(files);
@@ -529,6 +582,8 @@ function CreatePostModal({ user, userAvatar, userName, onSubmit, onClose }: {
           <textarea value={postContent} onChange={e => setPostContent(e.target.value)}
             placeholder="Bạn đang nghĩ gì? 🐓" autoFocus
             style={{ width: '100%', minHeight: 100, border: 'none', outline: 'none', resize: 'none', fontSize: 16, fontFamily: 'inherit', boxSizing: 'border-box', color: '#050505', lineHeight: 1.5 }} />
+
+          {/* Preview ảnh */}
           {imagePreviews.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: imagePreviews.length === 1 ? '1fr' : '1fr 1fr', gap: 4, marginTop: 8, borderRadius: 8, overflow: 'hidden' }}>
               {imagePreviews.map((src, i) => (
@@ -540,14 +595,52 @@ function CreatePostModal({ user, userAvatar, userName, onSubmit, onClose }: {
               ))}
             </div>
           )}
+
+          {/* ✅ Preview video link ngay trong modal */}
+          {postYoutube && !imagePreviews.length && (
+            <div style={{ marginTop: 8, borderRadius: 8, overflow: 'hidden', border: '1px solid #e4e6ea' }}>
+              {ytIdPreview && (
+                <div style={{ position: 'relative', paddingBottom: '52%', background: '#000' }}>
+                  <img src={`https://img.youtube.com/vi/${ytIdPreview}/hqdefault.jpg`}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} alt="preview" />
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 40, height: 40, background: 'rgba(0,0,0,0.6)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ width: 0, height: 0, borderStyle: 'solid', borderWidth: '8px 0 8px 16px', borderColor: 'transparent transparent transparent #fff', marginLeft: 3 }} />
+                    </div>
+                  </div>
+                  <div style={{ position: 'absolute', top: 6, left: 6, background: '#ff0000', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 3 }}>YouTube</div>
+                </div>
+              )}
+              {fbUrlPreview && (
+                <div style={{ background: '#1877f2', padding: '12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 18, flexShrink: 0 }}>f</div>
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>Video Facebook</div>
+                    <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11 }}>Sẽ hiển thị khi đăng</div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.2)', borderRadius: 12, padding: '4px 10px', color: '#fff', fontSize: 11 }}>✓ Hợp lệ</div>
+                </div>
+              )}
+              {postYoutube && !ytIdPreview && !fbUrlPreview && (
+                <div style={{ padding: '10px 12px', background: '#fff8e1', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>⚠️</span>
+                  <span style={{ fontSize: 12, color: '#856404' }}>Link không nhận dạng được — hỗ trợ YouTube và Facebook</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ border: '1px solid #e4e6ea', borderRadius: 8, padding: '10px 12px', marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#050505' }}>Thêm vào bài viết</span>
             <button onClick={() => fileInputRef.current?.click()} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, padding: '0 4px' }}>📷</button>
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleImages} />
+
+          {/* ✅ Placeholder rõ hơn — hỗ trợ cả Facebook */}
           <input value={postYoutube} onChange={e => setPostYoutube(e.target.value)}
-            placeholder="🎬 Link YouTube (không bắt buộc)"
+            placeholder="🎬 Link YouTube hoặc Facebook Video (không bắt buộc)"
             style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginTop: 8, boxSizing: 'border-box', outline: 'none', color: '#555' }} />
+
           <button onClick={handleSubmit} disabled={submitting || !postContent.trim()}
             style={{ width: '100%', marginTop: 10, padding: '11px', background: !postContent.trim() || submitting ? '#bcc0c4' : '#c0392b', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: postContent.trim() && !submitting ? 'pointer' : 'not-allowed' }}>
             {submitting ? 'Đang đăng...' : 'Đăng'}
@@ -580,8 +673,6 @@ export default function CongDongPage() {
   const [banners, setBanners] = useState<Banner[]>([]);
   const bannerColors = ['#7B1818', '#1a3a6e', '#4a1a00'];
   const bannerEmojis = ['💊', '🥚', '🌾'];
-
-  // Infinite scroll observer
   const loaderRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -589,22 +680,14 @@ export default function CongDongPage() {
   }, []);
 
   useEffect(() => {
-    setPosts([]);
-    setPage(0);
-    setHasMore(true);
-    fetchPosts(0, true);
+    setPosts([]); setPage(0); setHasMore(true); fetchPosts(0, true);
   }, [sortBy]);
 
   useEffect(() => { fetchSidebarData(); }, []);
 
-  // Infinite scroll
   useEffect(() => {
     const observer = new IntersectionObserver(
-      entries => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
-          loadMore();
-        }
-      },
+      entries => { if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) loadMore(); },
       { threshold: 0.1 }
     );
     if (loaderRef.current) observer.observe(loaderRef.current);
@@ -612,28 +695,21 @@ export default function CongDongPage() {
   }, [hasMore, loadingMore, loading, page]);
 
   async function fetchPosts(pageNum: number, reset = false) {
-    if (pageNum === 0) setLoading(true);
-    else setLoadingMore(true);
-
+    if (pageNum === 0) setLoading(true); else setLoadingMore(true);
     const from = pageNum * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
-
     let query = supabase.from('posts').select('*').eq('status', 'active');
     query = sortBy === 'newest'
       ? query.order('created_at', { ascending: false })
       : query.order('like_count', { ascending: false });
     const { data, error } = await query.range(from, to);
-
     if (error) { console.error(error.message); setLoading(false); setLoadingMore(false); return; }
-
     if (data && data.length > 0) {
       const userIds = [...new Set(data.map((p: any) => p.user_id))];
-      const { data: profilesData } = await supabase.from('profiles')
-        .select('id, full_name, avatar_url').in('id', userIds);
+      const { data: profilesData } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', userIds);
       const profileMap: Record<string, any> = {};
       profilesData?.forEach((p: any) => { profileMap[p.id] = p; });
       const newPosts = data.map((p: any) => ({ ...p, profiles: profileMap[p.user_id] || null })) as Post[];
-
       setPosts(prev => reset ? newPosts : [...prev, ...newPosts]);
       setHasMore(data.length === PAGE_SIZE);
       setPage(pageNum + 1);
@@ -641,14 +717,10 @@ export default function CongDongPage() {
       if (reset) setPosts([]);
       setHasMore(false);
     }
-
-    setLoading(false);
-    setLoadingMore(false);
+    setLoading(false); setLoadingMore(false);
   }
 
-  function loadMore() {
-    if (!loadingMore && hasMore) fetchPosts(page);
-  }
+  function loadMore() { if (!loadingMore && hasMore) fetchPosts(page); }
 
   async function fetchSidebarData() {
     const [hotRes, vidRes, suKeRes, bannerRes] = await Promise.all([
@@ -747,7 +819,6 @@ export default function CongDongPage() {
 
   return (
     <div style={{ backgroundColor: '#f0f2f5', minHeight: '100vh', fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
-
       {showPopup && (
         <CreatePostModal user={user} userAvatar={userAvatar} userName={userName}
           onSubmit={handleSubmitPost} onClose={() => setShowPopup(false)} />
@@ -800,7 +871,6 @@ export default function CongDongPage() {
           <CreatePostBar userAvatar={userAvatar}
             onOpen={() => user ? setShowPopup(true) : alert('Vui lòng đăng nhập!')} />
 
-          {/* Sort tabs */}
           <div style={{ background: '#fff', padding: '6px 12px', marginBottom: 8, display: 'flex', gap: 6, boxShadow: '0 1px 0 rgba(0,0,0,0.08)' }}>
             {([['newest', '🕐 Mới nhất'], ['hot', '🔥 Nổi bật']] as const).map(([v, l]) => (
               <button key={v} onClick={() => setSortBy(v)}
@@ -810,7 +880,6 @@ export default function CongDongPage() {
             ))}
           </div>
 
-          {/* Loading skeleton */}
           {loading && (
             <div style={{ background: '#fff', padding: 28, textAlign: 'center', color: '#8a8d91', fontSize: 13 }}>
               <div style={{ width: 28, height: 28, border: '3px solid #e4e6ea', borderTop: '3px solid #c0392b', borderRadius: '50%', margin: '0 auto 8px', animation: 'spin 0.8s linear infinite' }} />
@@ -818,18 +887,11 @@ export default function CongDongPage() {
             </div>
           )}
 
-          {/* Posts — priority chỉ cho bài đầu tiên */}
           {!loading && posts.map((post, index) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              comments={comments[post.id] || []}
-              liked={!!likedPosts[post.id]}
-              expanded={!!expandedComments[post.id]}
-              commentInput={commentInputs[post.id] || ''}
-              currentUserAvatar={userAvatar}
-              currentUserId={currentUserId}
-              priority={index === 0}
+            <PostCard key={post.id} post={post} comments={comments[post.id] || []}
+              liked={!!likedPosts[post.id]} expanded={!!expandedComments[post.id]}
+              commentInput={commentInputs[post.id] || ''} currentUserAvatar={userAvatar}
+              currentUserId={currentUserId} priority={index === 0}
               onLike={() => likePost(post.id)}
               onToggleComments={() => toggleComments(post.id)}
               onCommentChange={v => setCommentInputs(prev => ({ ...prev, [post.id]: v }))}
@@ -840,7 +902,6 @@ export default function CongDongPage() {
             />
           ))}
 
-          {/* Infinite scroll trigger */}
           <div ref={loaderRef} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {loadingMore && (
               <div style={{ width: 24, height: 24, border: '3px solid #e4e6ea', borderTop: '3px solid #c0392b', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
