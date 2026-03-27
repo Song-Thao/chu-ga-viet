@@ -1,11 +1,11 @@
-// SERVER COMPONENT — fetch data truoc khi gui HTML ve browser
+// SERVER COMPONENT
 import { createClient } from '@supabase/supabase-js';
 import ChoClient from './ChoClient';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 60;
 
 export const metadata = {
-  title: 'Cho Ga – Mua Ban Ga Choi Toan Quoc',
+  title: 'Cho Ga - Mua Ban Ga Choi Toan Quoc',
   description: 'Hang ngan con ga choi dang ban: ga don, ga cua, ga tre, ga noi.',
 };
 
@@ -17,7 +17,19 @@ async function fetchGa() {
     );
     const { data } = await supabase
       .from('ga')
-      .select('id,ten,loai_ga,gia,can_nang,tuoi,khu_vuc,video_url,created_at,view_count,ga_images(url,is_primary),ai_analysis(total_score)')
+      .select(`
+        id,
+        ten,
+        loai_ga,
+        gia,
+        can_nang,
+        tuoi,
+        khu_vuc,
+        video_url,
+        created_at,
+        ga_images ( url, is_primary ),
+        ai_analysis ( total_score )
+      `)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(24);
