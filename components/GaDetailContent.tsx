@@ -49,11 +49,16 @@ function ModalMuaNgay({ ga, nguoiBan, currentUser, onClose }: {
   ga: any; nguoiBan: any; currentUser: any; onClose: () => void;
 }) {
   const { openChat } = useChat();
-  const [mode, setMode] = useState<'choose' | 'qua-san' | 'tu-mua' | 'success'>('choose');
+  const [mode, setMode] = useState<'choose' | 'qua-san' | 'tu-mua' | 'confirm' | 'success'>('choose');
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState<any>(null);
   const [maGD, setMaGD] = useState('');
-  useEffect(() => { supabase.from('config').select('*').single().then(({ data }) => { if (data) setConfig(data); }); }, []);
+  const [orderId, setOrderId] = useState<number | null>(null);
+
+  useEffect(() => {
+    supabase.from('config').select('*').single().then(({ data }) => { if (data) setConfig(data); });
+  }, []);
+
   const giaGa = parseInt(ga.gia);
   const cocPercent = config?.coc_percent || 10;
   const phiPercent = config?.phi_percent || 1;
@@ -63,41 +68,101 @@ function ModalMuaNgay({ ga, nguoiBan, currentUser, onClose }: {
   const tkSo = config?.tk_so || '7207205286010';
   const tkBin = config?.tk_bin || '970405';
   const tkNganHang = config?.tk_ngan_hang || 'VietinBank';
-  const qrUrl = `https://img.vietqr.io/image/${tkBin}-${tkSo}-compact2.png?amount=${tiencoc}&addInfo=${encodeURIComponent(`COC ${ga.id}`)}&accountName=${encodeURIComponent(tkTen)}`;
-  async function handleDatCoc() {
+  const noiDungCK = `DATCOC ${ga.id}`;
+  const qrUrl = `https://img.vietqr.io/image/${tkBin}-${tkSo}-compact2.png?amount=${tiencoc}&addInfo=${encodeURIComponent(noiDungCK)}&accountName=${encodeURIComponent(tkTen)}`;
+
+  // ── BƯỚC 1: Tạo đơn ──
+  async function handleTaoDon() {
     setLoading(true);
     if (!currentUser) { alert('Vui lòng đăng nhập!'); setLoading(false); return; }
     if (currentUser.id === ga.user_id) { alert('Bạn không thể mua gà của chính mình!'); setLoading(false); return; }
+
+    // Kiểm tra đã có đơn chưa
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('id, ma_giao_dich, status')
+      .eq('ga_id', ga.id)
+      .eq('buyer_id', currentUser.id)
+      .in('status', ['pending_deposit', 'pending_confirmation'])
+      .maybeSingle();
+
+    if (existing) {
+      setMaGD(existing.ma_giao_dich);
+      setOrderId(existing.id);
+      setMode('confirm');
+      setLoading(false);
+      return;
+    }
+
     const ma = `CGV-${ga.id}-${Date.now()}`;
     setMaGD(ma);
-    const { error } = await supabase.from('orders').insert({
+    const { data: newOrder, error } = await supabase.from('orders').insert({
       ga_id: ga.id, buyer_id: currentUser.id, seller_id: ga.user_id,
-      gia: ga.gia, tien_coc: tiencoc, ma_giao_dich: ma, status: 'pending_deposit',
-    });
+      gia: ga.gia, tien_coc: tiencoc, ma_giao_dich: ma,
+      status: 'pending_deposit',
+    }).select().single();
+
+    if (!error && newOrder) {
+      setOrderId(newOrder.id);
+      setMode('confirm');
+    } else {
+      alert('Lỗi tạo đơn: ' + error?.message);
+    }
+    setLoading(false);
+  }
+
+  // ── BƯỚC 2: Buyer xác nhận đã chuyển khoản ──
+  async function handleDaChuyenKhoan() {
+    if (!orderId) return;
+    setLoading(true);
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: 'pending_confirmation' })
+      .eq('id', orderId);
+
     if (!error) {
       const anhGa = ga.ga_images?.find((i: any) => i.is_primary)?.url || ga.ga_images?.[0]?.url || '';
       const convId = await getOrCreateConv(String(ga.id), ga.user_id, currentUser.id);
-      if (convId) await openChat({ convId, type: 'product', gaId: ga.id, gaTen: ga.ten, gaAnh: anhGa, doiPhuongId: ga.user_id });
+      if (convId) {
+        await openChat({
+          convId, type: 'product', gaId: ga.id,
+          gaTen: ga.ten, gaAnh: anhGa, doiPhuongId: ga.user_id,
+        });
+      }
       setMode('success');
-    } else { alert('Lỗi: ' + error.message); }
+    } else {
+      alert('Lỗi: ' + error.message);
+    }
     setLoading(false);
   }
+
   return (
     <div className="fixed inset-0 bg-black/70 z-[80] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+
+        {/* HEADER */}
         <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
           <div className="flex items-center gap-2">
-            {mode !== 'choose' && <button onClick={() => setMode('choose')} className="text-gray-400 hover:text-gray-600 mr-1">←</button>}
+            {(mode === 'qua-san' || mode === 'tu-mua') && (
+              <button onClick={() => setMode('choose')} className="text-gray-400 hover:text-gray-600 mr-1">←</button>
+            )}
+            {mode === 'confirm' && (
+              <button onClick={() => setMode('qua-san')} className="text-gray-400 hover:text-gray-600 mr-1">←</button>
+            )}
             <h2 className="font-black text-base">
               {mode === 'choose' && '🛒 Mua gà này'}
               {mode === 'qua-san' && '🔒 Mua qua sàn (An toàn)'}
               {mode === 'tu-mua' && '⚠️ Tự liên hệ mua riêng'}
+              {mode === 'confirm' && '📱 Xác nhận chuyển khoản'}
               {mode === 'success' && '✅ Đặt cọc thành công!'}
             </h2>
           </div>
           <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 text-gray-500 text-sm">✕</button>
         </div>
+
         <div className="p-4">
+
+          {/* ── CHỌN HÌNH THỨC ── */}
           {mode === 'choose' && (
             <div className="space-y-3">
               <div className="flex gap-3 bg-gray-50 rounded-xl p-3">
@@ -114,74 +179,204 @@ function ModalMuaNgay({ ga, nguoiBan, currentUser, onClose }: {
                 <div className="flex items-start gap-3">
                   <span className="text-2xl">🔒</span>
                   <div className="flex-1">
-                    <div className="font-black text-green-800 flex items-center gap-2 flex-wrap">Mua qua sàn Chủ Gà Việt <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">AN TOÀN</span></div>
-                    <div className="text-sm text-green-700 mt-1">✓ Đặt cọc {cocPercent}% ({tiencoc.toLocaleString('vi-VN')}đ)<br />✓ Admin xác nhận & bảo đảm giao dịch<br />✓ Hoàn cọc nếu gà không đúng mô tả<br />✓ Phí sàn {phiPercent}% ({phiGD.toLocaleString('vi-VN')}đ)</div>
+                    <div className="font-black text-green-800 flex items-center gap-2 flex-wrap">
+                      Mua qua sàn Chủ Gà Việt
+                      <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">AN TOÀN</span>
+                    </div>
+                    <div className="text-sm text-green-700 mt-1">
+                      ✓ Đặt cọc {cocPercent}% ({tiencoc.toLocaleString('vi-VN')}đ)<br />
+                      ✓ Admin xác nhận & bảo đảm giao dịch<br />
+                      ✓ Hoàn cọc nếu gà không đúng mô tả<br />
+                      ✓ Phí sàn {phiPercent}% ({phiGD.toLocaleString('vi-VN')}đ)
+                    </div>
                   </div>
                 </div>
               </button>
               <button onClick={() => setMode('tu-mua')} className="w-full text-left border-2 border-orange-300 rounded-xl p-4 hover:bg-orange-50 transition">
                 <div className="flex items-start gap-3">
                   <span className="text-2xl">⚠️</span>
-                  <div><div className="font-black text-orange-800">Tự liên hệ mua riêng</div><div className="text-sm text-orange-700 mt-1">✗ Không có bảo đảm từ sàn<br />✗ Rủi ro lừa đảo cao hơn<br />✓ Không mất phí sàn</div></div>
+                  <div>
+                    <div className="font-black text-orange-800">Tự liên hệ mua riêng</div>
+                    <div className="text-sm text-orange-700 mt-1">
+                      ✗ Không có bảo đảm từ sàn<br />
+                      ✗ Rủi ro lừa đảo cao hơn<br />
+                      ✓ Không mất phí sàn
+                    </div>
+                  </div>
                 </div>
               </button>
             </div>
           )}
-          {mode === 'qua-san' && (<>
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-sm space-y-2">
-              {[{ label: 'Giá gà', value: `${giaGa.toLocaleString('vi-VN')} đ` }, { label: `Tiền cọc (${cocPercent}%)`, value: `${tiencoc.toLocaleString('vi-VN')} đ`, color: 'text-blue-600' }, { label: `Phí sàn (${phiPercent}%)`, value: `${phiGD.toLocaleString('vi-VN')} đ`, color: 'text-gray-500' }].map(item => (
-                <div key={item.label} className="flex justify-between border-b border-green-100 pb-2 last:border-0">
-                  <span className="text-gray-600">{item.label}</span><span className={`font-bold ${item.color || 'text-gray-900'}`}>{item.value}</span>
+
+          {/* ── QUA SÀN: BƯỚC 1 — Xem QR + chuyển khoản ── */}
+          {mode === 'qua-san' && (
+            <>
+              {/* Step indicator */}
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-6 h-6 bg-[#8B1A1A] text-white rounded-full flex items-center justify-center text-xs font-black">1</div>
+                  <span className="text-xs font-bold text-[#8B1A1A]">Chuyển khoản</span>
                 </div>
-              ))}
-            </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-              <div className="font-bold text-blue-800 mb-3 text-sm">📱 Quét QR đặt cọc</div>
-              <div className="flex gap-3 items-center">
-                <img src={qrUrl} alt="VietQR" className="w-28 h-28 rounded-lg border border-blue-200 bg-white flex-shrink-0" />
-                <div className="text-xs space-y-1.5">
-                  <div><span className="text-gray-500">Ngân hàng:</span> <span className="font-bold">{tkNganHang}</span></div>
-                  <div><span className="text-gray-500">Số TK:</span> <span className="font-bold font-mono">{tkSo}</span></div>
-                  <div><span className="text-gray-500">Chủ TK:</span> <span className="font-bold">{tkTen}</span></div>
-                  <div><span className="text-gray-500">Số tiền:</span> <span className="font-black text-blue-700">{tiencoc.toLocaleString('vi-VN')} đ</span></div>
-                  <div><span className="text-gray-500">Nội dung:</span> <span className="font-mono font-bold text-red-700">COC {ga.id}</span></div>
+                <div className="flex-1 h-0.5 bg-gray-200" />
+                <div className="flex items-center gap-1.5">
+                  <div className="w-6 h-6 bg-gray-200 text-gray-400 rounded-full flex items-center justify-center text-xs font-black">2</div>
+                  <span className="text-xs font-bold text-gray-400">Xác nhận</span>
                 </div>
               </div>
-            </div>
-            <div className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 mb-4">💡 Sau khi chuyển khoản, nhấn <strong>"Xác nhận đã cọc"</strong> — admin sẽ kiểm tra trong vòng 24h.</div>
-            <div className="flex gap-3">
-              <button onClick={() => setMode('choose')} className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-3 rounded-xl text-sm hover:bg-gray-50">← Quay lại</button>
-              <button onClick={handleDatCoc} disabled={loading} className="flex-1 bg-green-600 text-white font-black py-3 rounded-xl text-sm hover:bg-green-700 disabled:opacity-60">{loading ? '⏳ Đang xử lý...' : '✅ Xác nhận đã cọc'}</button>
-            </div>
-          </>)}
-          {mode === 'tu-mua' && (<>
-            <div className="bg-orange-50 border-2 border-orange-400 rounded-xl p-4 mb-4 text-sm">
-              <div className="font-black text-orange-800 mb-2">⚠️ Cảnh báo rủi ro!</div>
-              <div className="text-orange-700 space-y-1"><div>• Giao dịch ngoài sàn không được bảo đảm</div><div>• Chủ Gà Việt không chịu trách nhiệm tranh chấp</div><div>• Hãy gặp mặt trực tiếp khi giao dịch</div><div>• Không chuyển khoản trước khi xem gà thật</div></div>
-            </div>
-            {nguoiBan?.phone && nguoiBan?.phone_visibility !== 'private' ? (
-              <div className="space-y-2 mb-4">
-                <a href={`tel:${nguoiBan.phone}`} className="flex items-center gap-3 bg-green-50 border border-green-200 text-green-800 font-bold py-3 px-4 rounded-xl hover:bg-green-100 transition"><span className="text-xl">📞</span><div><div className="text-xs font-normal text-green-600">Gọi điện</div><div>{nguoiBan.phone}</div></div></a>
-                <a href={`https://zalo.me/${nguoiBan.phone}`} target="_blank" className="flex items-center gap-3 bg-blue-50 border border-blue-200 text-blue-800 font-bold py-3 px-4 rounded-xl hover:bg-blue-100 transition"><span className="text-xl">💬</span><div><div className="text-xs font-normal text-blue-600">Zalo</div><div>{nguoiBan.phone}</div></div></a>
+
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-sm space-y-2">
+                {[
+                  { label: 'Giá gà', value: `${giaGa.toLocaleString('vi-VN')} đ` },
+                  { label: `Tiền cọc (${cocPercent}%)`, value: `${tiencoc.toLocaleString('vi-VN')} đ`, color: 'text-blue-600' },
+                  { label: `Phí sàn (${phiPercent}%)`, value: `${phiGD.toLocaleString('vi-VN')} đ`, color: 'text-gray-500' },
+                ].map(item => (
+                  <div key={item.label} className="flex justify-between border-b border-green-100 pb-2 last:border-0">
+                    <span className="text-gray-600">{item.label}</span>
+                    <span className={`font-bold ${item.color || 'text-gray-900'}`}>{item.value}</span>
+                  </div>
+                ))}
               </div>
-            ) : <div className="bg-gray-50 rounded-xl p-4 text-center text-gray-400 text-sm mb-4">🔒 Người bán chưa cung cấp liên hệ công khai</div>}
-            <div className="flex gap-3">
-              <button onClick={() => setMode('choose')} className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-3 rounded-xl text-sm hover:bg-gray-50">← Quay lại</button>
-              <button onClick={onClose} className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl text-sm hover:bg-[#6B0F0F]">Đã hiểu, tiếp tục</button>
-            </div>
-          </>)}
+
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                <div className="font-bold text-blue-800 mb-3 text-sm">📱 Quét QR để chuyển khoản</div>
+                <div className="flex gap-3 items-center">
+                  <img src={qrUrl} alt="VietQR" className="w-28 h-28 rounded-lg border border-blue-200 bg-white flex-shrink-0" />
+                  <div className="text-xs space-y-1.5">
+                    <div><span className="text-gray-500">Ngân hàng:</span> <span className="font-bold">{tkNganHang}</span></div>
+                    <div><span className="text-gray-500">Số TK:</span> <span className="font-bold font-mono">{tkSo}</span></div>
+                    <div><span className="text-gray-500">Chủ TK:</span> <span className="font-bold">{tkTen}</span></div>
+                    <div><span className="text-gray-500">Số tiền:</span> <span className="font-black text-blue-700">{tiencoc.toLocaleString('vi-VN')} đ</span></div>
+                    <div>
+                      <span className="text-gray-500">Nội dung CK:</span>{' '}
+                      <span className="font-mono font-black text-red-700 bg-red-50 px-1.5 py-0.5 rounded">{noiDungCK}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-xs text-yellow-700">
+                  ⚠️ <strong>Quan trọng:</strong> Nhập đúng nội dung <strong className="text-red-700">{noiDungCK}</strong> để admin xác nhận nhanh hơn!
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setMode('choose')} className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-3 rounded-xl text-sm hover:bg-gray-50">← Quay lại</button>
+                <button onClick={handleTaoDon} disabled={loading}
+                  className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl text-sm hover:bg-[#6B0F0F] disabled:opacity-60">
+                  {loading ? '⏳ Đang xử lý...' : '✅ Tôi đã chuyển khoản →'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ── QUA SÀN: BƯỚC 2 — Xác nhận đã CK ── */}
+          {mode === 'confirm' && (
+            <>
+              {/* Step indicator */}
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-6 h-6 bg-green-500 text-white rounded-full flex items-center justify-center text-xs font-black">✓</div>
+                  <span className="text-xs font-bold text-green-600">Đã chuyển khoản</span>
+                </div>
+                <div className="flex-1 h-0.5 bg-[#8B1A1A]" />
+                <div className="flex items-center gap-1.5">
+                  <div className="w-6 h-6 bg-[#8B1A1A] text-white rounded-full flex items-center justify-center text-xs font-black">2</div>
+                  <span className="text-xs font-bold text-[#8B1A1A]">Xác nhận</span>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                <div className="font-bold text-blue-800 mb-2 text-sm">📋 Thông tin đơn hàng</div>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Mã đơn:</span>
+                    <span className="font-mono font-bold text-[#8B1A1A] text-xs">{maGD}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Tiền cọc:</span>
+                    <span className="font-black text-blue-700">{tiencoc.toLocaleString('vi-VN')} đ</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Nội dung CK:</span>
+                    <span className="font-mono font-bold text-red-700">{noiDungCK}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
+                <div className="font-bold text-yellow-800 text-sm mb-2">✅ Bạn đã chuyển khoản chưa?</div>
+                <div className="text-xs text-yellow-700 space-y-1">
+                  <div>• Chỉ bấm xác nhận sau khi <strong>đã chuyển khoản thành công</strong></div>
+                  <div>• Admin sẽ kiểm tra trong vòng <strong>24 giờ</strong></div>
+                  <div>• Sau khi admin xác nhận, đơn hàng sẽ được xử lý</div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setMode('qua-san')} className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-3 rounded-xl text-sm hover:bg-gray-50">← Chưa CK</button>
+                <button onClick={handleDaChuyenKhoan} disabled={loading}
+                  className="flex-1 bg-green-600 text-white font-black py-3 rounded-xl text-sm hover:bg-green-700 disabled:opacity-60">
+                  {loading ? '⏳ Đang xử lý...' : '🎉 Đã chuyển khoản rồi!'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ── TỰ MUA ── */}
+          {mode === 'tu-mua' && (
+            <>
+              <div className="bg-orange-50 border-2 border-orange-400 rounded-xl p-4 mb-4 text-sm">
+                <div className="font-black text-orange-800 mb-2">⚠️ Cảnh báo rủi ro!</div>
+                <div className="text-orange-700 space-y-1">
+                  <div>• Giao dịch ngoài sàn không được bảo đảm</div>
+                  <div>• Chủ Gà Việt không chịu trách nhiệm tranh chấp</div>
+                  <div>• Hãy gặp mặt trực tiếp khi giao dịch</div>
+                  <div>• Không chuyển khoản trước khi xem gà thật</div>
+                </div>
+              </div>
+              {nguoiBan?.phone && nguoiBan?.phone_visibility !== 'private' ? (
+                <div className="space-y-2 mb-4">
+                  <a href={`tel:${nguoiBan.phone}`} className="flex items-center gap-3 bg-green-50 border border-green-200 text-green-800 font-bold py-3 px-4 rounded-xl hover:bg-green-100 transition">
+                    <span className="text-xl">📞</span>
+                    <div><div className="text-xs font-normal text-green-600">Gọi điện</div><div>{nguoiBan.phone}</div></div>
+                  </a>
+                  <a href={`https://zalo.me/${nguoiBan.phone}`} target="_blank" className="flex items-center gap-3 bg-blue-50 border border-blue-200 text-blue-800 font-bold py-3 px-4 rounded-xl hover:bg-blue-100 transition">
+                    <span className="text-xl">💬</span>
+                    <div><div className="text-xs font-normal text-blue-600">Zalo</div><div>{nguoiBan.phone}</div></div>
+                  </a>
+                </div>
+              ) : (
+                <div className="bg-gray-50 rounded-xl p-4 text-center text-gray-400 text-sm mb-4">🔒 Người bán chưa cung cấp liên hệ công khai</div>
+              )}
+              <div className="flex gap-3">
+                <button onClick={() => setMode('choose')} className="flex-1 border-2 border-gray-300 text-gray-600 font-bold py-3 rounded-xl text-sm hover:bg-gray-50">← Quay lại</button>
+                <button onClick={onClose} className="flex-1 bg-[#8B1A1A] text-white font-black py-3 rounded-xl text-sm hover:bg-[#6B0F0F]">Đã hiểu, tiếp tục</button>
+              </div>
+            </>
+          )}
+
+          {/* ── THÀNH CÔNG ── */}
           {mode === 'success' && (
             <div className="text-center py-4">
               <div className="text-5xl mb-3">🎉</div>
-              <h3 className="font-black text-xl text-gray-900 mb-2">Đặt cọc thành công!</h3>
+              <h3 className="font-black text-xl text-gray-900 mb-2">Xác nhận thành công!</h3>
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-left text-sm">
                 <div className="font-bold text-green-800 mb-2">✅ Tiếp theo:</div>
-                <div className="space-y-1 text-green-700"><div>1. Admin xác nhận thanh toán trong 24h</div><div>2. Chat với người bán để thống nhất giao nhận</div><div>3. Thanh toán phần còn lại khi nhận gà</div></div>
+                <div className="space-y-1 text-green-700">
+                  <div>1. Admin đang kiểm tra thanh toán (trong 24h)</div>
+                  <div>2. Chat với người bán để thống nhất giao nhận</div>
+                  <div>3. Thanh toán phần còn lại khi nhận gà</div>
+                </div>
               </div>
-              {maGD && <div className="bg-gray-50 rounded-xl p-3 mb-4 text-xs text-gray-500 font-mono">Mã GD: {maGD}</div>}
-              <button onClick={onClose} className="w-full bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F]">Tiếp tục nhắn tin với người bán →</button>
+              {maGD && (
+                <div className="bg-gray-50 rounded-xl p-3 mb-4 text-xs text-gray-500 font-mono">
+                  Mã GD: {maGD}
+                </div>
+              )}
+              <button onClick={onClose} className="w-full bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F]">
+                Tiếp tục nhắn tin với người bán →
+              </button>
             </div>
           )}
+
         </div>
       </div>
     </div>
@@ -236,7 +431,6 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
   const [showEdit, setShowEdit] = useState(false);
   const [gaState, setGaState] = useState<any>(null);
 
-  // Form sửa
   const [editForm, setEditForm] = useState({ ten: '', gia: '', mo_ta: '', video_url: '' });
   const [editImages, setEditImages] = useState<any[]>([]);
   const [editVideoError, setEditVideoError] = useState('');
@@ -272,7 +466,6 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
     finally { setLoading(false); }
   }
 
-  // ── Upload ảnh mới lên Supabase Storage ──
   async function handleAddImages(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
     const remaining = 6 - editImages.length;
@@ -295,34 +488,29 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
-  // ── Xóa ảnh ──
   async function handleRemoveImage(img: any) {
     if (!confirm('Xóa ảnh này?')) return;
     await supabase.from('ga_images').delete().eq('id', img.id);
     const newList = editImages.filter(i => i.id !== img.id);
     setEditImages(newList);
-    // Nếu ảnh primary bị xóa → set ảnh đầu tiên còn lại làm primary
     if (img.is_primary && newList.length > 0) {
       await supabase.from('ga_images').update({ is_primary: true }).eq('id', newList[0].id);
       setEditImages(newList.map((i, idx) => ({ ...i, is_primary: idx === 0 })));
     }
   }
 
-  // ── Set ảnh chính ──
   async function handleSetPrimary(img: any) {
     await supabase.from('ga_images').update({ is_primary: false }).eq('ga_id', gaId);
     await supabase.from('ga_images').update({ is_primary: true }).eq('id', img.id);
     setEditImages(prev => prev.map(i => ({ ...i, is_primary: i.id === img.id })));
   }
 
-  // ── Validate video ──
   function handleVideoUrlChange(val: string) {
     setEditForm(f => ({ ...f, video_url: val }));
     if (val && !isValidVideoUrl(val)) setEditVideoError('Link không hợp lệ. Hỗ trợ: YouTube, Facebook, TikTok');
     else setEditVideoError('');
   }
 
-  // ── Lưu form ──
   async function handleSaveEdit() {
     if (editVideoError) { alert('Link video không hợp lệ!'); return; }
     setActionLoading(true);
@@ -426,9 +614,7 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
         </div>
       )}
 
-      {/* GRID CHÍNH */}
       <div className="grid md:grid-cols-2 gap-5 mb-5">
-        {/* Cột trái — Media */}
         <div>
           {mediaList.length > 0 ? (<>
             <div className="relative bg-black rounded-xl overflow-hidden mb-2" style={{ paddingBottom: '65%' }}>
@@ -457,7 +643,6 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
           </>) : <div className="bg-orange-800 rounded-xl h-72 flex items-center justify-center text-8xl">🐓</div>}
         </div>
 
-        {/* Cột phải — Thông tin */}
         <div className="flex flex-col gap-3">
           {!isModal && <div className="text-xs text-[#8B1A1A] font-semibold">{gaData.loai_ga}</div>}
           <h1 className={`font-black text-gray-800 leading-tight ${isModal ? 'text-xl' : 'text-2xl'}`}>{gaData.ten}</h1>
@@ -501,11 +686,8 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
         </div>
       </div>
 
-      {/* PHẦN DƯỚI */}
       <div className={`grid gap-5 ${isModal ? 'md:grid-cols-1' : 'md:grid-cols-3'}`}>
         <div className={`space-y-4 ${isModal ? '' : 'md:col-span-2'}`}>
-
-          {/* Mô tả */}
           {gaData.mo_ta && (
             <div className="bg-white rounded-xl p-4 shadow-sm">
               <h3 className="font-black text-gray-800 mb-2 text-sm">📋 Mô tả</h3>
@@ -513,32 +695,26 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
             </div>
           )}
 
-          {/* QUẢN LÝ CHỦ GÀ */}
           {isOwner && (
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
               <div className="text-xs font-bold text-orange-700 mb-3">🔧 Quản lý bài đăng của bạn</div>
               {showEdit ? (
                 <div className="space-y-4">
-                  {/* Tên */}
                   <div>
                     <label className="text-xs font-bold text-gray-500 block mb-1">Tên gà</label>
                     <input value={editForm.ten} onChange={e => setEditForm(f => ({ ...f, ten: e.target.value }))}
                       className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
                   </div>
-                  {/* Giá */}
                   <div>
                     <label className="text-xs font-bold text-gray-500 block mb-1">Giá (đ)</label>
                     <input type="number" value={editForm.gia} onChange={e => setEditForm(f => ({ ...f, gia: e.target.value }))}
                       className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
                   </div>
-                  {/* Mô tả */}
                   <div>
                     <label className="text-xs font-bold text-gray-500 block mb-1">Mô tả</label>
                     <textarea value={editForm.mo_ta} onChange={e => setEditForm(f => ({ ...f, mo_ta: e.target.value }))}
                       rows={3} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none" />
                   </div>
-
-                  {/* ── ẢNH ── */}
                   <div>
                     <label className="text-xs font-bold text-gray-500 block mb-2">📸 Ảnh ({editImages.length}/6)</label>
                     {editImages.length > 0 && (
@@ -568,8 +744,6 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
                     )}
                     <p className="text-xs text-gray-400 mt-1">Hover vào ảnh → xóa (✕) hoặc đặt làm ảnh chính (⭐)</p>
                   </div>
-
-                  {/* ── VIDEO ── */}
                   <div>
                     <label className="text-xs font-bold text-gray-500 block mb-1">🎬 Video (YouTube, Facebook, TikTok)</label>
                     <input type="url" value={editForm.video_url} onChange={e => handleVideoUrlChange(e.target.value)}
@@ -595,8 +769,6 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
                       <p className="text-xs text-amber-500 mt-1">⚠️ Để trống sẽ xóa video hiện tại</p>
                     )}
                   </div>
-
-                  {/* Nút lưu/hủy */}
                   <div className="flex gap-2 pt-1">
                     <button onClick={() => {
                       setShowEdit(false); setEditVideoError('');
@@ -635,7 +807,6 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
             </div>
           )}
 
-          {/* Bình luận */}
           <div className="bg-white rounded-xl p-4 shadow-sm">
             <h3 className="font-black text-gray-800 mb-3 text-sm">💬 Bình luận ({comments.length})</h3>
             <div className="flex gap-2 mb-3">
@@ -660,7 +831,6 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
           </div>
         </div>
 
-        {/* Cột phải — chỉ ngoài trang */}
         {!isModal && (
           <div className="space-y-4">
             <div className="bg-white rounded-xl p-4 shadow-sm">
@@ -683,7 +853,6 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
           </div>
         )}
 
-        {/* Người bán trong modal */}
         {isModal && nguoiBan && (
           <div className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
             <div className="flex items-center gap-2">
