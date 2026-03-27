@@ -27,16 +27,49 @@ function getYoutubeId(raw: string): string | null {
   return null;
 }
 
-// ✅ Detect Facebook video link
+// ✅ Detect Facebook video link (thêm share/r/ và /videos/)
 function getFacebookVideoUrl(raw: string): string | null {
   if (!raw) return null;
   const isFb =
     raw.includes('facebook.com/watch') ||
     raw.includes('facebook.com/share/v/') ||
+    raw.includes('facebook.com/share/r/') ||
     raw.includes('fb.watch') ||
     raw.includes('facebook.com/video') ||
+    raw.includes('facebook.com/videos/') ||
     raw.includes('facebook.com/reel');
   return isFb ? raw.trim() : null;
+}
+
+// ✅ Detect TikTok
+function getTikTokUrl(raw: string): string | null {
+  if (!raw) return null;
+  const isTikTok =
+    raw.includes('tiktok.com/@') ||
+    raw.includes('tiktok.com/v/') ||
+    raw.includes('vm.tiktok.com') ||
+    raw.includes('vt.tiktok.com');
+  return isTikTok ? raw.trim() : null;
+}
+
+// ✅ Detect Instagram
+function getInstagramUrl(raw: string): string | null {
+  if (!raw) return null;
+  const isIg =
+    raw.includes('instagram.com/p/') ||
+    raw.includes('instagram.com/reel/') ||
+    raw.includes('instagram.com/tv/');
+  return isIg ? raw.trim() : null;
+}
+
+// ✅ Detect Zalo
+function getZaloUrl(raw: string): string | null {
+  if (!raw) return null;
+  const isZalo =
+    raw.includes('zalo.me') ||
+    raw.includes('video.zalo.me') ||
+    raw.includes('zalo.com.vn');
+  return isZalo ? raw.trim() : null;
 }
 
 function timeAgo(dateStr: string): string {
@@ -204,7 +237,7 @@ function FloatingVideoPopup({ ytId, onClose, startX, startY, popupW }: {
 }
 
 // ============================================================
-// VIDEO POST — YouTube
+// VIDEO POST — YouTube (giữ nguyên)
 // ============================================================
 function VideoPost({ ytId }: { ytId: string }) {
   const [popup, setPopup] = useState<{ x: number; y: number; w: number } | null>(null);
@@ -238,7 +271,7 @@ function VideoPost({ ytId }: { ytId: string }) {
 }
 
 // ============================================================
-// ✅ VIDEO POST — Facebook (NEW)
+// VIDEO POST — Facebook (giữ nguyên)
 // ============================================================
 function FacebookVideoPost({ url }: { url: string }) {
   const [show, setShow] = useState(false);
@@ -255,7 +288,6 @@ function FacebookVideoPost({ url }: { url: string }) {
           alignItems: 'center', justifyContent: 'center', gap: 10,
         }}
       >
-        {/* Facebook logo placeholder */}
         <div style={{ width: 56, height: 56, background: 'rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>
           f
         </div>
@@ -282,6 +314,121 @@ function FacebookVideoPost({ url }: { url: string }) {
         allowFullScreen
         scrolling="no"
       />
+    </div>
+  );
+}
+
+// ============================================================
+// VIDEO POST — TikTok (không embed được, hiện card thân thiện)
+// ============================================================
+function TikTokPost({ url }: { url: string }) {
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, #010101 0%, #1a1a2e 100%)',
+      padding: '20px 16px', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', gap: 12, position: 'relative', overflow: 'hidden',
+    }}>
+      <div style={{ position: 'absolute', top: -20, right: -20, width: 100, height: 100, borderRadius: '50%', background: 'rgba(254,44,85,0.15)' }} />
+      <div style={{ position: 'absolute', bottom: -15, left: -15, width: 70, height: 70, borderRadius: '50%', background: 'rgba(0,242,234,0.12)' }} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, zIndex: 1 }}>
+        <div style={{ width: 44, height: 44, background: '#010101', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(254,44,85,0.4)', flexShrink: 0 }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.95a8.16 8.16 0 004.77 1.52V7.01a4.85 4.85 0 01-1-.32z" fill="#fe2c55"/>
+          </svg>
+        </div>
+        <div>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Video TikTok</div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 2 }}>
+            {url.length > 42 ? url.slice(0, 42) + '...' : url}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 14px', zIndex: 1, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, lineHeight: 1.5, marginBottom: 8 }}>
+          ℹ️ <strong style={{ color: '#fff' }}>TikTok không cho phép nhúng trực tiếp.</strong><br />
+          Để xem video này bạn cần mở TikTok. Nếu muốn mọi người xem ngay trên trang, hãy <strong style={{ color: '#00f2ea' }}>tải video về rồi đăng lên YouTube</strong> rồi dán link YouTube vào.
+        </div>
+        <a href={url} target="_blank" rel="noopener noreferrer"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'linear-gradient(90deg,#fe2c55,#ff6b81)', color: '#fff', borderRadius: 8, padding: '9px 0', fontWeight: 700, fontSize: 13, textDecoration: 'none', width: '100%' }}>
+          ▶ Xem trên TikTok
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// VIDEO POST — Instagram (không embed được)
+// ============================================================
+function InstagramPost({ url }: { url: string }) {
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, #405de6, #5851db, #833ab4, #c13584, #e1306c, #fd1d1d)',
+      padding: '20px 16px', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', gap: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 44, height: 44, background: 'rgba(255,255,255,0.2)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+            <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+          </svg>
+        </div>
+        <div>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Video Instagram</div>
+          <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 2 }}>
+            {url.includes('/reel/') ? 'Reels' : url.includes('/tv/') ? 'IGTV' : 'Post'}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 10, padding: '10px 14px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, lineHeight: 1.5, marginBottom: 8 }}>
+          ℹ️ <strong style={{ color: '#fff' }}>Instagram không cho nhúng video vào trang ngoài.</strong><br />
+          Gợi ý: <strong style={{ color: '#ffe066' }}>Đăng video lên YouTube</strong> rồi dán link YouTube để mọi người xem ngay tại đây.
+        </div>
+        <a href={url} target="_blank" rel="noopener noreferrer"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'rgba(255,255,255,0.25)', color: '#fff', borderRadius: 8, padding: '9px 0', fontWeight: 700, fontSize: 13, textDecoration: 'none', width: '100%' }}>
+          ▶ Xem trên Instagram
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// VIDEO POST — Zalo (không embed được)
+// ============================================================
+function ZaloPost({ url }: { url: string }) {
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, #0068ff 0%, #0052cc 100%)',
+      padding: '20px 16px', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', gap: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 44, height: 44, background: 'rgba(255,255,255,0.2)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff', fontWeight: 900, fontSize: 18, letterSpacing: -1 }}>
+          Z
+        </div>
+        <div>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Video Zalo</div>
+          <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 2 }}>
+            {url.length > 42 ? url.slice(0, 42) + '...' : url}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 10, padding: '10px 14px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, lineHeight: 1.5, marginBottom: 8 }}>
+          ℹ️ <strong style={{ color: '#fff' }}>Zalo không hỗ trợ nhúng video vào web.</strong><br />
+          Gợi ý: <strong style={{ color: '#ffe066' }}>Tải video về và đăng lên YouTube</strong> để mọi người trong cộng đồng xem trực tiếp mà không cần rời trang.
+        </div>
+        <a href={url} target="_blank" rel="noopener noreferrer"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'rgba(255,255,255,0.2)', color: '#fff', borderRadius: 8, padding: '9px 0', fontWeight: 700, fontSize: 13, textDecoration: 'none', width: '100%' }}>
+          ▶ Xem trên Zalo
+        </a>
+      </div>
     </div>
   );
 }
@@ -399,8 +546,10 @@ interface PostCardProps {
 
 function PostCard({ post, comments, liked, expanded, commentInput, currentUserAvatar, currentUserId, priority = false, onLike, onToggleComments, onCommentChange, onCommentSubmit, onShare, onReport, onDelete }: PostCardProps) {
   const ytId = getYoutubeId(post.youtube_url);
-  // ✅ Detect Facebook nếu không phải YouTube
   const fbUrl = !ytId ? getFacebookVideoUrl(post.youtube_url) : null;
+  const ttUrl = !ytId && !fbUrl ? getTikTokUrl(post.youtube_url) : null;
+  const igUrl = !ytId && !fbUrl && !ttUrl ? getInstagramUrl(post.youtube_url) : null;
+  const zaloUrl = !ytId && !fbUrl && !ttUrl && !igUrl ? getZaloUrl(post.youtube_url) : null;
 
   const avatarUrl = post.profiles?.avatar_url
     || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.profiles?.full_name || 'U')}&background=8B0000&color=fff`;
@@ -429,10 +578,13 @@ function PostCard({ post, comments, liked, expanded, commentInput, currentUserAv
 
       {postText.length > 0 && <PostContent text={postText} />}
 
-      {/* ✅ Media — ưu tiên: ảnh > YouTube > Facebook */}
+      {/* Media — ưu tiên: ảnh > YouTube > Facebook > TikTok > Instagram > Zalo */}
       {images.length > 0 && <MediaGrid images={images} priority={priority} />}
       {!images.length && ytId && <VideoPost ytId={ytId} />}
       {!images.length && !ytId && fbUrl && <FacebookVideoPost url={fbUrl} />}
+      {!images.length && !ytId && !fbUrl && ttUrl && <TikTokPost url={ttUrl} />}
+      {!images.length && !ytId && !fbUrl && !ttUrl && igUrl && <InstagramPost url={igUrl} />}
+      {!images.length && !ytId && !fbUrl && !ttUrl && !igUrl && zaloUrl && <ZaloPost url={zaloUrl} />}
 
       {/* Counts */}
       {(likeCount > 0 || post.comment_count > 0) && (
@@ -544,9 +696,11 @@ function CreatePostModal({ user, userAvatar, userName, onSubmit, onClose }: {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
-  // ✅ Preview video khi nhập link
   const ytIdPreview = getYoutubeId(postYoutube);
   const fbUrlPreview = !ytIdPreview ? getFacebookVideoUrl(postYoutube) : null;
+  const ttUrlPreview = !ytIdPreview && !fbUrlPreview ? getTikTokUrl(postYoutube) : null;
+  const igUrlPreview = !ytIdPreview && !fbUrlPreview && !ttUrlPreview ? getInstagramUrl(postYoutube) : null;
+  const zaloUrlPreview = !ytIdPreview && !fbUrlPreview && !ttUrlPreview && !igUrlPreview ? getZaloUrl(postYoutube) : null;
 
   function handleImages(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []).slice(0, 3);
@@ -596,9 +750,9 @@ function CreatePostModal({ user, userAvatar, userName, onSubmit, onClose }: {
             </div>
           )}
 
-          {/* ✅ Preview video link ngay trong modal */}
+          {/* Preview video link trong modal */}
           {postYoutube && !imagePreviews.length && (
-            <div style={{ marginTop: 8, borderRadius: 8, overflow: 'hidden', border: '1px solid #e4e6ea' }}>
+            <div style={{ marginTop: 8, borderRadius: 8, overflow: 'hidden', border: '1px solid #e4e6ea', display: 'flex', flexDirection: 'column', gap: 0 }}>
               {ytIdPreview && (
                 <div style={{ position: 'relative', paddingBottom: '52%', background: '#000' }}>
                   <img src={`https://img.youtube.com/vi/${ytIdPreview}/hqdefault.jpg`}
@@ -621,10 +775,44 @@ function CreatePostModal({ user, userAvatar, userName, onSubmit, onClose }: {
                   <div style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.2)', borderRadius: 12, padding: '4px 10px', color: '#fff', fontSize: 11 }}>✓ Hợp lệ</div>
                 </div>
               )}
-              {postYoutube && !ytIdPreview && !fbUrlPreview && (
+              {ttUrlPreview && (
+                <div style={{ background: '#010101', padding: '12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 36, height: 36, background: 'rgba(254,44,85,0.2)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.95a8.16 8.16 0 004.77 1.52V7.01a4.85 4.85 0 01-1-.32z" fill="#fe2c55"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>Video TikTok</div>
+                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Sẽ hiện nút mở TikTok (không nhúng được)</div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', background: 'rgba(254,44,85,0.2)', borderRadius: 12, padding: '4px 10px', color: '#fe2c55', fontSize: 11, fontWeight: 700 }}>✓</div>
+                </div>
+              )}
+              {igUrlPreview && (
+                <div style={{ background: 'linear-gradient(90deg,#833ab4,#e1306c)', padding: '12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.2)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 12, flexShrink: 0 }}>IG</div>
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>Video Instagram</div>
+                    <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11 }}>Sẽ hiện nút mở Instagram (không nhúng được)</div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.2)', borderRadius: 12, padding: '4px 10px', color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</div>
+                </div>
+              )}
+              {zaloUrlPreview && (
+                <div style={{ background: '#0068ff', padding: '12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.2)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 16, flexShrink: 0 }}>Z</div>
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>Video Zalo</div>
+                    <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11 }}>Sẽ hiện nút mở Zalo (không nhúng được)</div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.2)', borderRadius: 12, padding: '4px 10px', color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</div>
+                </div>
+              )}
+              {postYoutube && !ytIdPreview && !fbUrlPreview && !ttUrlPreview && !igUrlPreview && !zaloUrlPreview && (
                 <div style={{ padding: '10px 12px', background: '#fff8e1', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 16 }}>⚠️</span>
-                  <span style={{ fontSize: 12, color: '#856404' }}>Link không nhận dạng được — hỗ trợ YouTube và Facebook</span>
+                  <span style={{ fontSize: 12, color: '#856404' }}>Link không nhận dạng được — hỗ trợ YouTube, Facebook, TikTok, Instagram, Zalo</span>
                 </div>
               )}
             </div>
@@ -636,9 +824,8 @@ function CreatePostModal({ user, userAvatar, userName, onSubmit, onClose }: {
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleImages} />
 
-          {/* ✅ Placeholder rõ hơn — hỗ trợ cả Facebook */}
           <input value={postYoutube} onChange={e => setPostYoutube(e.target.value)}
-            placeholder="🎬 Link YouTube hoặc Facebook Video (không bắt buộc)"
+            placeholder="🎬 Link YouTube, Facebook, TikTok, Instagram, Zalo... (không bắt buộc)"
             style={{ width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginTop: 8, boxSizing: 'border-box', outline: 'none', color: '#555' }} />
 
           <button onClick={handleSubmit} disabled={submitting || !postContent.trim()}
