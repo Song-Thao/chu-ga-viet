@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import ChoClient from './ChoClient';
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'Cho Ga – Mua Ban Ga Choi Toan Quoc',
