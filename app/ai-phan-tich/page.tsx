@@ -43,6 +43,22 @@ export default function AIPhanTichPage() {
   const handleImage = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // ── Bước 1: Chặn file lạ (không phải ảnh) ──
+    if (!file.type.startsWith('image/')) {
+      setError('❌ Chỉ cho phép file ảnh (JPG, PNG, WEBP...)');
+      e.target.value = '';
+      return;
+    }
+
+    // ── Bước 2: Chặn file quá lớn trước khi nén ──
+    if (file.size > 20 * 1024 * 1024) {
+      setError('❌ Ảnh quá lớn! Tối đa 20MB mỗi ảnh.');
+      e.target.value = '';
+      return;
+    }
+
+    setError('');
     setOptimizing(true);
     try {
       const optimized = await optimizeImage(file, { maxWidthOrHeight: 800, maxSizeKB: 150 });
