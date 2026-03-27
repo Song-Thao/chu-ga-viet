@@ -16,6 +16,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [pendingCount, setPendingCount] = useState(0); // ── THÊM MỚI
   const [config, setConfig] = useState<any>({
     phi_percent: 2, phi_codinh: 0, coc_percent: 30, bat_buoc_escrow: false,
     tk_ten: '', tk_so: '', tk_ngan_hang: '', tk_bin: '', zalo: '', shopee_link: '',
@@ -35,7 +36,6 @@ export default function AdminPage() {
 
   useEffect(() => { checkAdmin(); }, []);
 
-  // Close drawer on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (drawerOpen && drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
@@ -78,9 +78,12 @@ export default function AdminPage() {
     setPosts(data || []);
   };
 
+  // ── THÊM MỚI: đếm pending_confirmation ──
   const fetchOrders = async () => {
     const { data } = await supabase.from('orders').select('id, gia, tien_coc, ma_giao_dich, status, created_at, ga(ten)').order('created_at', { ascending: false }).limit(50);
     setOrders(data || []);
+    const pending = (data || []).filter((o: any) => o.status === 'pending_confirmation').length;
+    setPendingCount(pending);
   };
 
   const fetchConfig = async () => {
@@ -103,9 +106,14 @@ export default function AdminPage() {
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, status } : p));
   };
 
+  // ── THÊM MỚI: cập nhật pendingCount khi admin xác nhận ──
   const updateOrderStatus = async (orderId: number, status: string) => {
+    const order = orders.find(o => o.id === orderId);
     await supabase.from('orders').update({ status }).eq('id', orderId);
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+    if (order?.status === 'pending_confirmation' && status !== 'pending_confirmation') {
+      setPendingCount(prev => Math.max(0, prev - 1));
+    }
   };
 
   const saveConfig = async () => {
@@ -147,7 +155,9 @@ export default function AdminPage() {
     active: 'bg-green-100 text-green-700', locked: 'bg-red-100 text-red-700',
     pending: 'bg-yellow-100 text-yellow-700', sold: 'bg-blue-100 text-blue-700',
     hidden: 'bg-gray-100 text-gray-600', deleted: 'bg-red-100 text-red-700',
-    pending_deposit: 'bg-yellow-100 text-yellow-700', deposited: 'bg-blue-100 text-blue-700',
+    pending_deposit: 'bg-yellow-100 text-yellow-700',
+    pending_confirmation: 'bg-purple-100 text-purple-700', // ── THÊM MỚI
+    deposited: 'bg-blue-100 text-blue-700',
     completed: 'bg-green-100 text-green-700', disputed: 'bg-red-100 text-red-700',
     refunded: 'bg-gray-100 text-gray-600',
   }[status] || 'bg-gray-100 text-gray-600');
@@ -155,7 +165,8 @@ export default function AdminPage() {
   const getStatusLabel = (status: string) => ({
     active: 'Hoạt động', locked: 'Bị khóa', pending: 'Chờ duyệt',
     sold: 'Đã bán', hidden: 'Đã ẩn', deleted: 'Đã xóa',
-    pending_deposit: 'Chờ cọc', deposited: 'Đã cọc',
+    pending_deposit: 'Chờ CK', pending_confirmation: 'Chờ xác nhận CK', // ── THÊM MỚI
+    deposited: 'Đã cọc',
     completed: 'Hoàn tất', disputed: 'Tranh chấp', refunded: 'Hoàn tiền',
   }[status] || status);
 
@@ -185,12 +196,10 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-100">
 
-      {/* ── MOBILE DRAWER OVERLAY ── */}
       {drawerOpen && (
         <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setDrawerOpen(false)} />
       )}
 
-      {/* ── SIDEBAR — desktop: fixed left | mobile: drawer ── */}
       <aside
         ref={drawerRef}
         className={`
@@ -208,12 +217,18 @@ export default function AdminPage() {
           <button onClick={() => setDrawerOpen(false)} className="md:hidden w-7 h-7 bg-white/20 rounded-full flex items-center justify-center text-sm">✕</button>
         </div>
 
+        {/* ── THÊM MỚI: badge đỏ trên menu ── */}
         <nav className="flex-1 py-1 overflow-y-auto">
           {menuItems.map(item => (
             <button key={item.key} onClick={() => handleNav(item.key)}
               className={`w-full text-left px-4 py-3 flex items-center gap-3 text-sm font-semibold transition ${tab === item.key ? 'bg-white/20 border-r-4 border-yellow-400' : 'hover:bg-white/10'}`}>
               <span className="text-base">{item.icon}</span>
               <span>{item.label}</span>
+              {item.key === 'orders' && pendingCount > 0 && (
+                <span className="ml-auto bg-yellow-400 text-black text-xs font-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                  {pendingCount}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -223,10 +238,8 @@ export default function AdminPage() {
         </div>
       </aside>
 
-      {/* ── MAIN CONTENT ── */}
       <div className="md:ml-56 flex flex-col min-h-screen">
 
-        {/* ── TOP BAR ── */}
         <header className="bg-white border-b sticky top-0 z-30 flex items-center gap-3 px-3 py-2.5 shadow-sm">
           <button
             onClick={() => setDrawerOpen(true)}
@@ -237,17 +250,21 @@ export default function AdminPage() {
             <span className="font-black text-gray-800 text-base truncate">{currentLabel}</span>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {/* ── THÊM MỚI: badge trên topbar mobile ── */}
+            {pendingCount > 0 && (
+              <button onClick={() => handleNav('orders')} className="flex items-center gap-1.5 bg-yellow-400 text-black text-xs font-black px-2.5 py-1 rounded-full">
+                💰 {pendingCount} chờ xác nhận
+              </button>
+            )}
             <span className="text-xs text-gray-400 hidden sm:block">Admin Panel</span>
           </div>
         </header>
 
-        {/* ── PAGE CONTENT ── */}
         <main className="flex-1 p-3 md:p-5">
 
           {/* DASHBOARD */}
           {tab === 'dashboard' && (
             <div>
-              {/* Stats grid — 2 col mobile, 3 col desktop */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-4 mb-4">
                 {[
                   { label: 'Người dùng', value: stats.users, sub: `+${stats.newUsers} hôm nay`, icon: '👥', color: 'bg-blue-500' },
@@ -267,6 +284,22 @@ export default function AdminPage() {
                   </div>
                 ))}
               </div>
+
+              {/* ── THÊM MỚI: alert khi có đơn chờ xác nhận ── */}
+              {pendingCount > 0 && (
+                <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4 mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🔔</span>
+                    <div>
+                      <div className="font-black text-yellow-800">Có {pendingCount} đơn chờ xác nhận chuyển khoản!</div>
+                      <div className="text-xs text-yellow-600">Buyer đã báo đã CK — vui lòng kiểm tra tài khoản ngân hàng</div>
+                    </div>
+                  </div>
+                  <button onClick={() => handleNav('orders')} className="bg-yellow-400 text-black font-black text-sm px-4 py-2 rounded-xl hover:bg-yellow-500 whitespace-nowrap">
+                    Xem ngay →
+                  </button>
+                </div>
+              )}
 
               <div className="grid md:grid-cols-2 gap-3">
                 <div className="bg-white rounded-xl p-3 shadow-sm">
@@ -402,7 +435,8 @@ export default function AdminPage() {
                   <tbody className="divide-y">
                     {orders.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-gray-400 text-xs">Chưa có giao dịch nào</td></tr>}
                     {orders.map(o => (
-                      <tr key={o.id} className="hover:bg-gray-50">
+                      // ── THÊM MỚI: highlight row pending_confirmation ──
+                      <tr key={o.id} className={`hover:bg-gray-50 ${o.status === 'pending_confirmation' ? 'bg-purple-50' : ''}`}>
                         <td className="px-3 py-2 font-mono font-bold text-[#8B1A1A] text-xs">{o.ma_giao_dich?.slice(-8)}</td>
                         <td className="px-3 py-2 text-gray-700 max-w-[80px] truncate">{o.ga?.ten || '—'}</td>
                         <td className="px-3 py-2 font-semibold whitespace-nowrap">{(parseInt(o.gia) / 1000000).toFixed(1)}M</td>
@@ -412,10 +446,21 @@ export default function AdminPage() {
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex gap-1 flex-wrap">
-                            {o.status === 'pending_deposit' && <button onClick={() => updateOrderStatus(o.id, 'deposited')} className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded whitespace-nowrap">✓ Cọc</button>}
+                            {/* ── THÊM MỚI: nút xác nhận CK ── */}
+                            {o.status === 'pending_deposit' && (
+                              <span className="text-xs text-gray-400 italic">Chờ buyer CK</span>
+                            )}
+                            {o.status === 'pending_confirmation' && (
+                              <button onClick={() => updateOrderStatus(o.id, 'deposited')}
+                                className="text-xs bg-green-500 text-white px-2 py-1 rounded-lg font-bold whitespace-nowrap hover:bg-green-600">
+                                ✅ Xác nhận đã nhận CK
+                              </button>
+                            )}
                             {o.status === 'deposited' && <button onClick={() => updateOrderStatus(o.id, 'completed')} className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded whitespace-nowrap">✓ Xong</button>}
                             {(o.status === 'deposited' || o.status === 'disputed') && <button onClick={() => updateOrderStatus(o.id, 'refunded')} className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">Hoàn</button>}
-                            {!['disputed','completed','refunded'].includes(o.status) && <button onClick={() => updateOrderStatus(o.id, 'disputed')} className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">TChấp</button>}
+                            {!['pending_deposit', 'pending_confirmation', 'disputed', 'completed', 'refunded'].includes(o.status) && (
+                              <button onClick={() => updateOrderStatus(o.id, 'disputed')} className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">TChấp</button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -534,7 +579,6 @@ export default function AdminPage() {
                   ))}
                 </div>
 
-                {/* Preview */}
                 <div className="grid grid-cols-3 gap-1.5 mb-3">
                   {banners.map((b, idx) => (
                     <div key={idx} className={`${idx === 0 ? 'bg-red-900' : idx === 1 ? 'bg-gray-700' : 'bg-yellow-800'} text-white p-2 rounded-lg`}>
