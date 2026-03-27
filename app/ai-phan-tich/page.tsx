@@ -2,6 +2,16 @@
 import { useState, useRef } from 'react';
 import { optimizeImage } from '@/lib/imageOptimizer';
 
+interface GaData {
+  loai: string;
+  tuoi: string;
+  can_nang: string;
+  thanh_tich_tran: string;
+  thanh_tich_thang: string;
+  tinh_trang: string;
+  nguon_goc: string;
+}
+
 export default function AIPhanTichPage() {
   const [images, setImages] = useState<(string | null)[]>([null, null, null, null]);
   const [loading, setLoading] = useState(false);
@@ -15,6 +25,14 @@ export default function AIPhanTichPage() {
   const [optimizing, setOptimizing] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // ── Form dữ liệu gà ──
+  const [gaData, setGaData] = useState<GaData>({
+    loai: '', tuoi: '', can_nang: '',
+    thanh_tich_tran: '', thanh_tich_thang: '',
+    tinh_trang: '', nguon_goc: '',
+  });
+  const [showForm, setShowForm] = useState(false);
+
   const LoadingSteps = [
     '📷 Nhận diện từng ảnh...',
     '👁 Quan sát mắt, chân, vảy...',
@@ -27,9 +45,7 @@ export default function AIPhanTichPage() {
     if (!file) return;
     setOptimizing(true);
     try {
-      // Bước 1: Nén ảnh
       const optimized = await optimizeImage(file, { maxWidthOrHeight: 800, maxSizeKB: 150 });
-      // Bước 2: Convert file đã nén → base64 để gửi API
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onload = (ev) => resolve(ev.target?.result as string);
@@ -38,10 +54,8 @@ export default function AIPhanTichPage() {
       const newImages = [...images];
       newImages[index] = base64;
       setImages(newImages);
-      setResult(null);
-      setError('');
+      setResult(null); setError('');
     } catch {
-      // Fallback: đọc ảnh gốc nếu optimize lỗi
       const reader = new FileReader();
       reader.onload = (ev) => {
         const newImages = [...images];
@@ -49,9 +63,7 @@ export default function AIPhanTichPage() {
         setImages(newImages);
       };
       reader.readAsDataURL(file);
-    } finally {
-      setOptimizing(false);
-    }
+    } finally { setOptimizing(false); }
   };
 
   const handleVideo = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,8 +72,7 @@ export default function AIPhanTichPage() {
     const url = URL.createObjectURL(file);
     const video = videoRef.current;
     if (!video) return;
-    video.src = url;
-    video.load();
+    video.src = url; video.load();
     video.onloadedmetadata = () => {
       const duration = video.duration;
       const times = [0.5, duration * 0.33, duration * 0.66, duration - 0.5];
@@ -73,17 +84,11 @@ export default function AIPhanTichPage() {
         v.currentTime = Math.min(t, duration - 0.1);
         v.addEventListener('seeked', () => {
           const canvas = document.createElement('canvas');
-          canvas.width = 640;
-          canvas.height = 360;
+          canvas.width = 640; canvas.height = 360;
           canvas.getContext('2d')?.drawImage(v, 0, 0, 640, 360);
           frames[i] = canvas.toDataURL('image/jpeg', 0.7);
           done++;
-          if (done === 4) {
-            setVideoFrames(frames);
-            setImages(frames as any);
-            setResult(null);
-            setError('');
-          }
+          if (done === 4) { setVideoFrames(frames); setImages(frames as any); setResult(null); setError(''); }
         }, { once: true });
       });
     };
@@ -94,13 +99,12 @@ export default function AIPhanTichPage() {
   const speakResult = (r: any) => {
     if (!r || !window.speechSynthesis) return;
     stopSpeech();
-    const text = `Kết quả phân tích ${r.so_anh} ảnh. Điểm: ${r.tong_diem} trên 10. Độ tin cậy: ${r.do_tin_cay} phần trăm. Mắt: ${r.mat}. Chân: ${r.chan}. Kết luận vảy: ${r.vay_ket_luan}. ${r.vay_y_nghia}. Nhận xét: ${r.nhan_xet_tong}. Giá đề xuất: ${r.gia_de_xuat} đồng.`;
+    const text = `Kết quả phân tích ${r.so_anh} ảnh. Điểm: ${r.tong_diem} trên 10. Độ tin cậy: ${r.do_tin_cay} phần trăm. Mắt: ${r.mat}. Chân: ${r.chan}. Kết luận vảy: ${r.vay_ket_luan}. ${r.vay_y_nghia}. ${r.chien_dau_nhan_xet ? 'Đánh giá chiến đấu: ' + r.chien_dau_nhan_xet : ''}. Nhận xét: ${r.nhan_xet_tong}. Giá đề xuất: ${r.gia_de_xuat} đồng.`;
     const utterance = new SpeechSynthesisUtterance(text);
     const voices = window.speechSynthesis.getVoices();
     const viVoice = voices.find(v => v.lang.includes('vi') || v.lang.includes('VI'));
     if (viVoice) utterance.voice = viVoice;
-    utterance.lang = 'vi-VN';
-    utterance.rate = 0.9;
+    utterance.lang = 'vi-VN'; utterance.rate = 0.9;
     utterance.onstart = () => setSpeaking(true);
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
@@ -108,13 +112,11 @@ export default function AIPhanTichPage() {
   };
 
   const uploadedCount = images.filter(Boolean).length;
+  const filledCount = Object.values(gaData).filter(v => v !== '').length;
 
   const handleAnalyze = async () => {
     if (uploadedCount === 0) return;
-    setLoading(true);
-    setError('');
-    setStep(0);
-    stopSpeech();
+    setLoading(true); setError(''); setStep(0); stopSpeech();
     const interval = setInterval(() => {
       setStep(prev => prev < LoadingSteps.length - 1 ? prev + 1 : prev);
     }, 900);
@@ -122,22 +124,17 @@ export default function AIPhanTichPage() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ images }),
+        body: JSON.stringify({ images, gaData }),
       });
       const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        throw new Error(`Lỗi server (${res.status}). Vui lòng thử lại!`);
-      }
+      if (!contentType.includes('application/json')) throw new Error(`Lỗi server (${res.status}). Vui lòng thử lại!`);
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `Lỗi ${res.status}`);
       setResult(data);
       if (voiceOn) setTimeout(() => speakResult(data), 600);
     } catch (err: any) {
       setError(err?.message || 'Lỗi phân tích. Vui lòng thử lại!');
-    } finally {
-      clearInterval(interval);
-      setLoading(false);
-    }
+    } finally { clearInterval(interval); setLoading(false); }
   };
 
   const getDiemMau = (d: number) => d >= 8 ? 'text-green-600' : d >= 6.5 ? 'text-yellow-600' : 'text-red-500';
@@ -145,6 +142,12 @@ export default function AIPhanTichPage() {
   const getVayStyle = (loai: string) =>
     loai === 'tot' ? 'bg-green-50 border-green-300' :
     loai === 'xau' ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200';
+  const getRiskStyle = (risk: string) =>
+    risk === 'thap' ? 'bg-green-100 text-green-700 border-green-200' :
+    risk === 'cao' ? 'bg-red-100 text-red-700 border-red-200' :
+    'bg-yellow-100 text-yellow-700 border-yellow-200';
+  const getRiskLabel = (risk: string) =>
+    risk === 'thap' ? '🟢 Rủi ro thấp' : risk === 'cao' ? '🔴 Rủi ro cao' : '🟡 Rủi ro trung bình';
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-4">
@@ -162,8 +165,10 @@ export default function AIPhanTichPage() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-5">
-        {/* UPLOAD */}
+        {/* CỘT TRÁI */}
         <div className="space-y-4">
+
+          {/* UPLOAD */}
           <div className="bg-white rounded-xl p-4 shadow-sm">
             <div className="flex gap-2 mb-3">
               <button onClick={() => { setVideoMode(false); setVideoFrames([]); }}
@@ -239,6 +244,7 @@ export default function AIPhanTichPage() {
               <button onClick={handleAnalyze}
                 className="w-full bg-[#8B1A1A] text-white font-black py-3 rounded-xl hover:bg-[#6B0F0F] transition">
                 🐓 Phân tích {uploadedCount} ảnh — đối chiếu 92 loại vảy
+                {filledCount > 0 && <span className="ml-1 text-red-200 font-normal text-xs">+ {filledCount} thông tin</span>}
               </button>
             )}
             {uploadedCount > 0 && (
@@ -248,12 +254,136 @@ export default function AIPhanTichPage() {
               </button>
             )}
             {error && (
-              <div className="mt-2 bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg">
-                ❌ {error}
+              <div className="mt-2 bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg">❌ {error}</div>
+            )}
+          </div>
+
+          {/* FORM THÔNG TIN GÀ */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <button onClick={() => setShowForm(!showForm)}
+              className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition">
+              <div className="flex items-center gap-2">
+                <span className="text-base">📋</span>
+                <div>
+                  <div className="font-bold text-gray-800 text-sm">Thông tin gà <span className="text-gray-400 font-normal text-xs">(không bắt buộc)</span></div>
+                  <div className="text-xs">
+                    {filledCount > 0
+                      ? <span className="text-green-600 font-semibold">✓ Đã nhập {filledCount}/7 — AI phân tích chính xác hơn</span>
+                      : <span className="text-gray-400">Nhập thêm để AI định giá + đánh giá chiến đấu chính xác hơn</span>}
+                  </div>
+                </div>
+              </div>
+              <span className={`text-gray-400 text-xs transition-transform inline-block ${showForm ? 'rotate-180' : ''}`}>▼</span>
+            </button>
+
+            {showForm && (
+              <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
+
+                {/* Loại gà */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block">🐓 Loại gà</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[{val:'ga_don',label:'Gà đòn'},{val:'ga_cua',label:'Gà cựa'},{val:'ga_tre',label:'Gà tre'}].map(opt => (
+                      <button key={opt.val}
+                        onClick={() => setGaData(p => ({...p, loai: p.loai === opt.val ? '' : opt.val}))}
+                        className={`py-1.5 rounded-lg text-xs font-bold border transition ${gaData.loai === opt.val ? 'bg-[#8B1A1A] text-white border-[#8B1A1A]' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-red-300'}`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tuổi + Cân */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 mb-1 block">📅 Tuổi (tháng)</label>
+                    <input type="number" min="1" max="120" value={gaData.tuoi}
+                      onChange={e => setGaData(p => ({...p, tuoi: e.target.value}))}
+                      placeholder="VD: 18"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 mb-1 block">⚖️ Cân nặng (kg)</label>
+                    <input type="number" min="0.5" max="10" step="0.1" value={gaData.can_nang}
+                      onChange={e => setGaData(p => ({...p, can_nang: e.target.value}))}
+                      placeholder="VD: 2.5"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-400" />
+                  </div>
+                </div>
+
+                {/* Thành tích */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">⚔️ Thành tích chiến đấu</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" min="0" value={gaData.thanh_tich_tran}
+                      onChange={e => setGaData(p => ({...p, thanh_tich_tran: e.target.value}))}
+                      placeholder="Tổng số trận"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-400" />
+                    <input type="number" min="0" value={gaData.thanh_tich_thang}
+                      onChange={e => setGaData(p => ({...p, thanh_tich_thang: e.target.value}))}
+                      placeholder="Số trận thắng"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-400" />
+                  </div>
+                  {gaData.thanh_tich_tran && gaData.thanh_tich_thang && (() => {
+                    const tran = parseInt(gaData.thanh_tich_tran);
+                    const thang = parseInt(gaData.thanh_tich_thang);
+                    const ty = tran > 0 ? Math.round((thang/tran)*100) : 0;
+                    return (
+                      <div className={`mt-1 text-xs text-center font-semibold ${ty>=70?'text-green-600':ty>=50?'text-yellow-600':'text-red-500'}`}>
+                        Tỉ lệ thắng: {ty}% ({thang}/{tran} trận)
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Tình trạng */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block">❤️ Tình trạng sức khỏe</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      {val:'khoe', label:'✅ Khỏe', active:'bg-green-600 text-white border-green-600'},
+                      {val:'nghi_benh', label:'⚠️ Nghi bệnh', active:'bg-yellow-500 text-white border-yellow-500'},
+                      {val:'dang_tri', label:'🏥 Đang trị', active:'bg-red-600 text-white border-red-600'},
+                    ].map(opt => (
+                      <button key={opt.val}
+                        onClick={() => setGaData(p => ({...p, tinh_trang: p.tinh_trang === opt.val ? '' : opt.val}))}
+                        className={`py-1.5 rounded-lg text-xs font-bold border transition ${gaData.tinh_trang === opt.val ? opt.active : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {(gaData.tinh_trang === 'nghi_benh' || gaData.tinh_trang === 'dang_tri') && (
+                    <div className="mt-1.5 bg-red-50 border border-red-200 rounded-lg p-2 text-xs text-red-600">
+                      ⚠️ Gà bệnh → AI sẽ cảnh báo và tự động giảm giá đề xuất
+                    </div>
+                  )}
+                </div>
+
+                {/* Nguồn gốc */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block">🏠 Nguồn gốc</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[{val:'ga_nha',label:'🏠 Gà nhà nuôi'},{val:'mua_lai',label:'🛒 Mua lại'}].map(opt => (
+                      <button key={opt.val}
+                        onClick={() => setGaData(p => ({...p, nguon_goc: p.nguon_goc === opt.val ? '' : opt.val}))}
+                        className={`py-1.5 rounded-lg text-xs font-bold border transition ${gaData.nguon_goc === opt.val ? 'bg-[#8B1A1A] text-white border-[#8B1A1A]' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-red-300'}`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {filledCount > 0 && (
+                  <button onClick={() => setGaData({loai:'',tuoi:'',can_nang:'',thanh_tich_tran:'',thanh_tich_thang:'',tinh_trang:'',nguon_goc:''})}
+                    className="w-full text-xs text-gray-400 py-1.5 hover:text-red-400 transition">
+                    × Xóa thông tin đã nhập
+                  </button>
+                )}
               </div>
             )}
           </div>
 
+          {/* TIPS */}
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
             <h3 className="font-bold text-amber-800 mb-2 text-sm">💡 Để AI xác định vảy chính xác</h3>
             <div className="space-y-1 text-xs text-amber-700">
@@ -266,13 +396,15 @@ export default function AIPhanTichPage() {
           </div>
         </div>
 
-        {/* KẾT QUẢ */}
+        {/* CỘT PHẢI — KẾT QUẢ */}
         <div>
           {loading && (
             <div className="bg-white rounded-xl p-6 shadow-sm text-center">
               <div className="text-5xl mb-4 animate-bounce">🐓</div>
               <div className="font-bold text-gray-800 mb-1">{LoadingSteps[step]}</div>
-              <div className="text-xs text-gray-400 mb-3">Đang xử lý {uploadedCount} ảnh...</div>
+              <div className="text-xs text-gray-400 mb-3">
+                Đang xử lý {uploadedCount} ảnh{filledCount > 0 ? ` + ${filledCount} thông tin gà` : ''}...
+              </div>
               <div className="flex gap-1 justify-center">
                 {LoadingSteps.map((_, i) => (
                   <div key={i} className={`h-1.5 w-8 rounded-full transition-all ${i <= step ? 'bg-[#8B1A1A]' : 'bg-gray-200'}`} />
@@ -283,6 +415,8 @@ export default function AIPhanTichPage() {
 
           {result && !loading && (
             <div className="space-y-3">
+
+              {/* TỔNG ĐIỂM */}
               <div className="bg-white rounded-xl p-4 shadow-sm">
                 <div className="flex justify-between items-start mb-1">
                   <div>
@@ -297,19 +431,45 @@ export default function AIPhanTichPage() {
                   </div>
                   <span className="text-xs text-gray-500">Tin cậy: {result.do_tin_cay}%</span>
                 </div>
+
+                {/* Sub-scores nếu có data gà */}
+                {(result.diem_ngoai_hinh || result.diem_chien_dau) && (
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    {result.diem_ngoai_hinh && (
+                      <div className="bg-blue-50 rounded-lg p-2 text-center">
+                        <div className="text-xs text-blue-600 font-semibold">👁 Ngoại hình</div>
+                        <div className={`text-xl font-black ${getDiemMau(result.diem_ngoai_hinh)}`}>{result.diem_ngoai_hinh}/10</div>
+                      </div>
+                    )}
+                    {result.diem_chien_dau && (
+                      <div className="bg-orange-50 rounded-lg p-2 text-center">
+                        <div className="text-xs text-orange-600 font-semibold">⚔️ Chiến đấu</div>
+                        <div className={`text-xl font-black ${getDiemMau(result.diem_chien_dau)}`}>{result.diem_chien_dau}/10</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {!speaking ? (
-                  <button onClick={() => speakResult(result)}
-                    className="w-full bg-green-600 text-white font-bold py-2 rounded-lg text-sm">
+                  <button onClick={() => speakResult(result)} className="w-full bg-green-600 text-white font-bold py-2 rounded-lg text-sm">
                     🔊 Nghe sư kê đọc kết quả
                   </button>
                 ) : (
-                  <button onClick={stopSpeech}
-                    className="w-full bg-gray-500 text-white font-bold py-2 rounded-lg text-sm animate-pulse">
+                  <button onClick={stopSpeech} className="w-full bg-gray-500 text-white font-bold py-2 rounded-lg text-sm animate-pulse">
                     ⏹ Dừng đọc
                   </button>
                 )}
               </div>
 
+              {/* CẢNH BÁO BỆNH */}
+              {result.canh_bao_benh && (
+                <div className="bg-red-50 border-2 border-red-300 rounded-xl p-3">
+                  <div className="font-bold text-red-700 text-sm mb-1">🚨 Cảnh báo sức khỏe</div>
+                  <p className="text-sm text-red-600">{result.canh_bao_benh}</p>
+                </div>
+              )}
+
+              {/* AI NHẬN DIỆN */}
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
                 <div className="font-bold text-blue-700 text-xs mb-1">🔍 AI nhận diện từng ảnh</div>
                 <p className="text-xs text-gray-600">{result.nhan_dien_anh}</p>
@@ -317,6 +477,7 @@ export default function AIPhanTichPage() {
                 {result.phan_khong_ro && <div className="mt-0.5 text-xs text-orange-600"><b>Chưa rõ:</b> {result.phan_khong_ro}</div>}
               </div>
 
+              {/* NGOẠI HÌNH */}
               <div className="bg-white border border-gray-100 rounded-xl p-3">
                 <div className="font-bold text-gray-700 text-sm mb-2">👁 Nhận diện ngoại hình</div>
                 <div className="space-y-1.5 text-sm text-gray-600">
@@ -326,6 +487,21 @@ export default function AIPhanTichPage() {
                 </div>
               </div>
 
+              {/* CHIẾN ĐẤU (chỉ hiện khi có thông tin gà) */}
+              {result.chien_dau_nhan_xet && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+                  <div className="font-bold text-orange-700 text-sm mb-2">⚔️ Đánh giá chiến đấu</div>
+                  <p className="text-sm text-gray-600 mb-2">{result.chien_dau_nhan_xet}</p>
+                  {result.risk_level && (
+                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${getRiskStyle(result.risk_level)}`}>
+                      {getRiskLabel(result.risk_level)}
+                    </div>
+                  )}
+                  {result.risk_ly_do && <p className="text-xs text-gray-500 mt-1.5">{result.risk_ly_do}</p>}
+                </div>
+              )}
+
+              {/* VẢY */}
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
                 <div className="font-bold text-yellow-700 text-sm mb-1">🐾 AI quan sát vảy</div>
                 <p className="text-sm text-gray-600 mb-2">{result.vay_quan_sat}</p>
@@ -341,6 +517,7 @@ export default function AIPhanTichPage() {
                 </div>
               </div>
 
+              {/* ĐIỂM MẠNH / HẠN CHẾ */}
               <div className="grid grid-cols-2 gap-2">
                 {result.diem_manh && (
                   <div className="bg-green-50 border border-green-100 rounded-xl p-3">
@@ -356,6 +533,7 @@ export default function AIPhanTichPage() {
                 )}
               </div>
 
+              {/* NHẬN ĐỊNH AI */}
               {result.nhan_xet_tong && (
                 <div className="bg-purple-50 border border-purple-100 rounded-xl p-3">
                   <div className="font-bold text-purple-700 text-sm mb-1">🤖 Nhận định AI</div>
@@ -363,13 +541,20 @@ export default function AIPhanTichPage() {
                 </div>
               )}
 
+              {/* GIÁ */}
               <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-4">
                 <div className="text-xs font-bold text-gray-500 mb-1">💰 Giá tham khảo</div>
                 <div className="text-2xl font-black text-[#8B1A1A]">{result.gia_de_xuat} đ</div>
                 <p className="text-xs text-gray-500 mt-0.5">{result.ly_do_gia}</p>
-                <p className="text-xs text-gray-400 italic mt-0.5">*Tham khảo thị trường, không phải giá cam kết</p>
+                {result.gia_dieu_chinh_ly_do && (
+                  <div className="mt-1.5 text-xs bg-white rounded-lg p-2 border border-yellow-100">
+                    <b className="text-orange-600">Điều chỉnh:</b> {result.gia_dieu_chinh_ly_do}
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 italic mt-1">*Tham khảo thị trường, không phải giá cam kết</p>
               </div>
 
+              {/* CẦN BỔ SUNG */}
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
                 <div className="font-bold text-gray-600 text-sm mb-1">📋 Cần bổ sung</div>
                 <p className="text-sm text-gray-500">{result.yeu_cau_bo_sung}</p>
