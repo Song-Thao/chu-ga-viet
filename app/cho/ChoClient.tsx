@@ -40,19 +40,24 @@ function getVideoThumb(url: string) {
   return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null;
 }
 
-// ── GaFullModal ── items-center + max-h + overflow-y-auto trên box
+// ── GaFullModal ──
 function GaFullModal({ gaId, onClose }: { gaId: string; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-2 md:p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white z-10 rounded-t-2xl">
+    <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-2 md:p-4" onClick={onClose}>
+      <div
+        className="relative w-full max-w-4xl h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* HEADER — luôn dính trên */}
+        <div className="sticky top-0 z-10 bg-white border-b flex items-center justify-between px-4 py-3 flex-shrink-0">
           <span className="font-black text-gray-800">Chi tiet ga</span>
           <div className="flex gap-2">
             <Link href={`/ga/${gaId}`} onClick={onClose} className="text-xs border border-gray-300 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-50">Mo trang rieng</Link>
-            <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-sm">X</button>
+            <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-sm">✕</button>
           </div>
         </div>
-        <div className="p-3 md:p-5">
+        {/* NỘI DUNG — scroll riêng */}
+        <div className="flex-1 overflow-y-auto p-3 md:p-5">
           <GaDetailContent gaId={gaId} isModal={true} onClose={onClose} />
         </div>
       </div>
@@ -60,7 +65,7 @@ function GaFullModal({ gaId, onClose }: { gaId: string; onClose: () => void }) {
   );
 }
 
-// ── GaQuickModal ── giữ nguyên code cũ hoạt động tốt
+// ── GaQuickModal ──
 function GaQuickModal({ ga, onClose }: { ga: any; onClose: () => void }) {
   const [activeMedia, setActiveMedia] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -80,56 +85,63 @@ function GaQuickModal({ ga, onClose }: { ga: any; onClose: () => void }) {
         <GaFullModal gaId={String(ga.id)} onClose={() => { setShowFull(false); onClose(); }} />,
         document.body
       )}
-      <div className="fixed inset-0 bg-black/65 z-50 flex items-center justify-center p-3" onClick={onClose}>
-        <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center justify-between px-3 py-2.5 border-b">
+      <div className="fixed inset-0 z-50 bg-black/65 flex items-center justify-center p-3" onClick={onClose}>
+        <div
+          className="relative w-full max-w-sm h-auto max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* HEADER — luôn dính trên */}
+          <div className="sticky top-0 z-10 bg-white border-b flex items-center justify-between px-3 py-2.5 flex-shrink-0">
             <div className="min-w-0 flex-1 pr-2">
               <h2 className="font-black text-sm text-gray-800 truncate">{ga.ten}</h2>
               <div className="text-xs text-gray-500">{ga.loai_ga} - {ga.khu_vuc}</div>
             </div>
-            <button onClick={onClose} className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center text-xs">X</button>
+            <button onClick={onClose} className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center text-xs flex-shrink-0">✕</button>
           </div>
 
-          {mediaList.length > 0 && (
-            <div className="relative bg-black" style={{ paddingBottom: '56%' }}>
-              {cur.type === 'image' ? (
-                <Image src={cur.url} alt={ga.ten} fill className="object-contain" sizes="400px" />
-              ) : ytId && !isPlaying ? (
-                <>
-                  <img src={cur.thumb || `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`} alt="video" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                  <button onClick={() => setIsPlaying(true)} className="absolute inset-0 flex items-center justify-center">
-                    <div className="bg-black/60 rounded-full w-12 h-12 flex items-center justify-center"><span className="text-white text-xl ml-1">▶</span></div>
-                  </button>
-                </>
-              ) : ytId ? (
-                <iframe src={`https://www.youtube.com/embed/${ytId}?autoplay=1&controls=1&rel=0`} className="absolute inset-0 w-full h-full border-none" allow="autoplay; encrypted-media; fullscreen" allowFullScreen />
-              ) : null}
-              {aiScore && <div className="absolute top-2 right-2 bg-yellow-400 text-black text-xs px-2 py-0.5 rounded-full font-bold z-10">★ {aiScore}</div>}
-            </div>
-          )}
-
-          {mediaList.length > 1 && (
-            <div className="flex gap-1.5 px-3 pt-2 overflow-x-auto">
-              {mediaList.map((m, i) => (
-                <button key={i} onClick={() => setActiveMedia(i)} className={`relative flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 ${activeMedia === i ? 'border-red-800' : 'border-gray-200'}`}>
-                  <img src={m.thumb || ''} alt="" className="w-full h-full object-cover" loading="lazy" />
-                  {m.type === 'video' && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><span className="text-white text-xs">▶</span></div>}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="px-3 py-3">
-            <div className="flex items-baseline justify-between mb-1">
-              <div className="text-red-800 font-black text-lg">{formatGia(parseInt(ga.gia))}</div>
-              <div className="flex gap-1.5">
-                {ga.can_nang && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{ga.can_nang}kg</span>}
-                {ga.tuoi && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{ga.tuoi}th</span>}
+          {/* NỘI DUNG — scroll riêng */}
+          <div className="flex-1 overflow-y-auto">
+            {mediaList.length > 0 && (
+              <div className="relative bg-black" style={{ paddingBottom: '56%' }}>
+                {cur.type === 'image' ? (
+                  <Image src={cur.url} alt={ga.ten} fill className="object-contain" sizes="400px" />
+                ) : ytId && !isPlaying ? (
+                  <>
+                    <img src={cur.thumb || `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`} alt="video" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                    <button onClick={() => setIsPlaying(true)} className="absolute inset-0 flex items-center justify-center">
+                      <div className="bg-black/60 rounded-full w-12 h-12 flex items-center justify-center"><span className="text-white text-xl ml-1">▶</span></div>
+                    </button>
+                  </>
+                ) : ytId ? (
+                  <iframe src={`https://www.youtube.com/embed/${ytId}?autoplay=1&controls=1&rel=0`} className="absolute inset-0 w-full h-full border-none" allow="autoplay; encrypted-media; fullscreen" allowFullScreen />
+                ) : null}
+                {aiScore && <div className="absolute top-2 right-2 bg-yellow-400 text-black text-xs px-2 py-0.5 rounded-full font-bold z-10">★ {aiScore}</div>}
               </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setShowFull(true)} className="flex-1 bg-red-800 text-white font-bold py-2.5 rounded-xl text-sm">Xem day du</button>
-              <button onClick={onClose} className="px-4 border border-gray-300 text-gray-600 font-bold py-2.5 rounded-xl text-sm">Dong</button>
+            )}
+
+            {mediaList.length > 1 && (
+              <div className="flex gap-1.5 px-3 pt-2 overflow-x-auto">
+                {mediaList.map((m, i) => (
+                  <button key={i} onClick={() => setActiveMedia(i)} className={`relative flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 ${activeMedia === i ? 'border-red-800' : 'border-gray-200'}`}>
+                    <img src={m.thumb || ''} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    {m.type === 'video' && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><span className="text-white text-xs">▶</span></div>}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="px-3 py-3">
+              <div className="flex items-baseline justify-between mb-1">
+                <div className="text-red-800 font-black text-lg">{formatGia(parseInt(ga.gia))}</div>
+                <div className="flex gap-1.5">
+                  {ga.can_nang && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{ga.can_nang}kg</span>}
+                  {ga.tuoi && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{ga.tuoi}th</span>}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setShowFull(true)} className="flex-1 bg-red-800 text-white font-bold py-2.5 rounded-xl text-sm">Xem day du</button>
+                <button onClick={onClose} className="px-4 border border-gray-300 text-gray-600 font-bold py-2.5 rounded-xl text-sm">Dong</button>
+              </div>
             </div>
           </div>
         </div>
