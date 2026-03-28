@@ -24,61 +24,43 @@ const LoaiGa = [
 ];
 
 const MauNen = ['bg-orange-800','bg-gray-700','bg-green-800','bg-red-900','bg-yellow-700','bg-teal-800'];
-
 const PAGE_SIZE = 12;
 
 function formatGia(gia: number) {
   if (gia >= 1000000) return `${(gia / 1000000).toFixed(1).replace('.0', '')} trieu d`;
   return `${gia.toLocaleString('vi-VN')} d`;
 }
-
 function getYoutubeId(url: string) {
   if (!url) return null;
   const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([^&\n?#]+)/);
   return m ? m[1] : null;
 }
-
 function getVideoThumb(url: string) {
   const id = getYoutubeId(url);
   return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null;
 }
 
-function SkeletonCard() {
-  return (
-    <div className="bg-white rounded-xl overflow-hidden shadow-sm">
-      <div className="h-36 w-full bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse" />
-      <div className="p-2 md:p-3 space-y-2">
-        <div className="h-3 w-1/2 bg-gray-200 rounded animate-pulse" />
-        <div className="h-3 w-3/4 bg-gray-200 rounded animate-pulse" />
-        <div className="h-4 w-1/3 bg-gray-200 rounded animate-pulse" />
-      </div>
-    </div>
-  );
-}
-
-// ── GaFullModal: fix scroll mobile ──
+// ── GaFullModal ── items-center + max-h + overflow-y-auto trên box
 function GaFullModal({ gaId, onClose }: { gaId: string; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/80 z-[60] overflow-y-auto" onClick={onClose}>
-      <div className="flex min-h-full items-start justify-center p-2 md:items-center md:p-4">
-        <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white z-10 rounded-t-2xl">
-            <span className="font-black text-gray-800">Chi tiet ga</span>
-            <div className="flex gap-2">
-              <Link href={`/ga/${gaId}`} onClick={onClose} className="text-xs border border-gray-300 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-50">Mo trang rieng</Link>
-              <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-sm">X</button>
-            </div>
+    <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-2 md:p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white z-10 rounded-t-2xl">
+          <span className="font-black text-gray-800">Chi tiet ga</span>
+          <div className="flex gap-2">
+            <Link href={`/ga/${gaId}`} onClick={onClose} className="text-xs border border-gray-300 text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-50">Mo trang rieng</Link>
+            <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-sm">X</button>
           </div>
-          <div className="p-3 md:p-5">
-            <GaDetailContent gaId={gaId} isModal={true} onClose={onClose} />
-          </div>
+        </div>
+        <div className="p-3 md:p-5">
+          <GaDetailContent gaId={gaId} isModal={true} onClose={onClose} />
         </div>
       </div>
     </div>
   );
 }
 
-// ── GaQuickModal: fix scroll mobile ──
+// ── GaQuickModal ── giữ nguyên code cũ hoạt động tốt
 function GaQuickModal({ ga, onClose }: { ga: any; onClose: () => void }) {
   const [activeMedia, setActiveMedia] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -98,58 +80,56 @@ function GaQuickModal({ ga, onClose }: { ga: any; onClose: () => void }) {
         <GaFullModal gaId={String(ga.id)} onClose={() => { setShowFull(false); onClose(); }} />,
         document.body
       )}
-      <div className="fixed inset-0 bg-black/65 z-50 overflow-y-auto" onClick={onClose}>
-        <div className="flex min-h-full items-start justify-center p-3 md:items-center">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-3 py-2.5 border-b">
-              <div className="min-w-0 flex-1 pr-2">
-                <h2 className="font-black text-sm text-gray-800 truncate">{ga.ten}</h2>
-                <div className="text-xs text-gray-500">{ga.loai_ga} - {ga.khu_vuc}</div>
-              </div>
-              <button onClick={onClose} className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center text-xs">X</button>
+      <div className="fixed inset-0 bg-black/65 z-50 flex items-center justify-center p-3" onClick={onClose}>
+        <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-3 py-2.5 border-b">
+            <div className="min-w-0 flex-1 pr-2">
+              <h2 className="font-black text-sm text-gray-800 truncate">{ga.ten}</h2>
+              <div className="text-xs text-gray-500">{ga.loai_ga} - {ga.khu_vuc}</div>
             </div>
+            <button onClick={onClose} className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center text-xs">X</button>
+          </div>
 
-            {mediaList.length > 0 && (
-              <div className="relative bg-black" style={{ paddingBottom: '56%' }}>
-                {cur.type === 'image' ? (
-                  <Image src={cur.url} alt={ga.ten} fill className="object-contain" sizes="400px" />
-                ) : ytId && !isPlaying ? (
-                  <>
-                    <img src={cur.thumb || `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`} alt="video" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                    <button onClick={() => setIsPlaying(true)} className="absolute inset-0 flex items-center justify-center">
-                      <div className="bg-black/60 rounded-full w-12 h-12 flex items-center justify-center"><span className="text-white text-xl ml-1">▶</span></div>
-                    </button>
-                  </>
-                ) : ytId ? (
-                  <iframe src={`https://www.youtube.com/embed/${ytId}?autoplay=1&controls=1&rel=0`} className="absolute inset-0 w-full h-full border-none" allow="autoplay; encrypted-media; fullscreen" allowFullScreen />
-                ) : null}
-                {aiScore && <div className="absolute top-2 right-2 bg-yellow-400 text-black text-xs px-2 py-0.5 rounded-full font-bold z-10">★ {aiScore}</div>}
-              </div>
-            )}
-
-            {mediaList.length > 1 && (
-              <div className="flex gap-1.5 px-3 pt-2 overflow-x-auto">
-                {mediaList.map((m, i) => (
-                  <button key={i} onClick={() => setActiveMedia(i)} className={`relative flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 ${activeMedia === i ? 'border-red-800' : 'border-gray-200'}`}>
-                    <img src={m.thumb || ''} alt="" className="w-full h-full object-cover" loading="lazy" />
-                    {m.type === 'video' && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><span className="text-white text-xs">▶</span></div>}
+          {mediaList.length > 0 && (
+            <div className="relative bg-black" style={{ paddingBottom: '56%' }}>
+              {cur.type === 'image' ? (
+                <Image src={cur.url} alt={ga.ten} fill className="object-contain" sizes="400px" />
+              ) : ytId && !isPlaying ? (
+                <>
+                  <img src={cur.thumb || `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`} alt="video" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                  <button onClick={() => setIsPlaying(true)} className="absolute inset-0 flex items-center justify-center">
+                    <div className="bg-black/60 rounded-full w-12 h-12 flex items-center justify-center"><span className="text-white text-xl ml-1">▶</span></div>
                   </button>
-                ))}
-              </div>
-            )}
+                </>
+              ) : ytId ? (
+                <iframe src={`https://www.youtube.com/embed/${ytId}?autoplay=1&controls=1&rel=0`} className="absolute inset-0 w-full h-full border-none" allow="autoplay; encrypted-media; fullscreen" allowFullScreen />
+              ) : null}
+              {aiScore && <div className="absolute top-2 right-2 bg-yellow-400 text-black text-xs px-2 py-0.5 rounded-full font-bold z-10">★ {aiScore}</div>}
+            </div>
+          )}
 
-            <div className="px-3 py-3">
-              <div className="flex items-baseline justify-between mb-1">
-                <div className="text-red-800 font-black text-lg">{formatGia(parseInt(ga.gia))}</div>
-                <div className="flex gap-1.5">
-                  {ga.can_nang && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{ga.can_nang}kg</span>}
-                  {ga.tuoi && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{ga.tuoi}th</span>}
-                </div>
+          {mediaList.length > 1 && (
+            <div className="flex gap-1.5 px-3 pt-2 overflow-x-auto">
+              {mediaList.map((m, i) => (
+                <button key={i} onClick={() => setActiveMedia(i)} className={`relative flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 ${activeMedia === i ? 'border-red-800' : 'border-gray-200'}`}>
+                  <img src={m.thumb || ''} alt="" className="w-full h-full object-cover" loading="lazy" />
+                  {m.type === 'video' && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><span className="text-white text-xs">▶</span></div>}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="px-3 py-3">
+            <div className="flex items-baseline justify-between mb-1">
+              <div className="text-red-800 font-black text-lg">{formatGia(parseInt(ga.gia))}</div>
+              <div className="flex gap-1.5">
+                {ga.can_nang && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{ga.can_nang}kg</span>}
+                {ga.tuoi && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{ga.tuoi}th</span>}
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => setShowFull(true)} className="flex-1 bg-red-800 text-white font-bold py-2.5 rounded-xl text-sm">Xem day du</button>
-                <button onClick={onClose} className="px-4 border border-gray-300 text-gray-600 font-bold py-2.5 rounded-xl text-sm">Dong</button>
-              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowFull(true)} className="flex-1 bg-red-800 text-white font-bold py-2.5 rounded-xl text-sm">Xem day du</button>
+              <button onClick={onClose} className="px-4 border border-gray-300 text-gray-600 font-bold py-2.5 rounded-xl text-sm">Dong</button>
             </div>
           </div>
         </div>
@@ -169,31 +149,18 @@ function GaCard({ ga, idx, priority = false }: { ga: any; idx: number; priority?
   const totalMedia = (ga.ga_images?.length || 0) + (hasVideo ? 1 : 0);
   const aiScore = ga.ai_analysis?.[0]?.total_score;
 
-  const handleMouseEnter = () => { router.prefetch(`/ga/${ga.id}`); };
-
   return (
     <>
       {showModal && createPortal(<GaQuickModal ga={ga} onClose={() => setShowModal(false)} />, document.body)}
-      <div
-        onClick={() => setShowModal(true)}
-        onMouseEnter={handleMouseEnter}
-        className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer"
-      >
+      <div onClick={() => setShowModal(true)} onMouseEnter={() => router.prefetch(`/ga/${ga.id}`)}
+        className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer">
         <div className="relative h-36 w-full bg-gray-100">
-          {!imgLoaded && (
-            <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse z-10" />
-          )}
+          {!imgLoaded && <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse z-10" />}
           {displayThumb ? (
-            <Image
-              src={displayThumb}
-              alt={ga.ten}
-              fill
+            <Image src={displayThumb} alt={ga.ten} fill
               sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw"
               className={`object-cover transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
-              priority={priority}
-              loading={priority ? 'eager' : 'lazy'}
-              onLoad={() => setImgLoaded(true)}
-            />
+              priority={priority} loading={priority ? 'eager' : 'lazy'} onLoad={() => setImgLoaded(true)} />
           ) : (
             <div className={`${MauNen[idx % MauNen.length]} h-full flex items-center justify-center text-5xl`}>🐓</div>
           )}
@@ -238,7 +205,8 @@ function FilterPanel({ khuVuc, loaiGa, giaMax, setKhuVuc, setLoaiGa, setGiaMax, 
           ))}
         </div>
       </div>
-      <button onClick={() => { setKhuVuc('Tat ca'); setLoaiGa('Tat ca'); setGiaMax(50000000); onClose(); }} className="w-full border border-red-800 text-red-800 rounded-lg py-2 text-sm font-semibold hover:bg-red-50">
+      <button onClick={() => { setKhuVuc('Tat ca'); setLoaiGa('Tat ca'); setGiaMax(50000000); onClose(); }}
+        className="w-full border border-red-800 text-red-800 rounded-lg py-2 text-sm font-semibold hover:bg-red-50">
         Xoa bo loc
       </button>
     </div>
@@ -289,7 +257,6 @@ export default function ChoClient({ initialData }: { initialData: any[] }) {
         <div className="hidden md:block w-56 flex-shrink-0">
           <div className="sticky top-20"><FilterPanel {...fp} /></div>
         </div>
-
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-center mb-3">
             <div>
@@ -310,9 +277,7 @@ export default function ChoClient({ initialData }: { initialData: any[] }) {
           {sorted.length > 0 ? (
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {visible.map((ga, idx) => (
-                  <GaCard key={ga.id} ga={ga} idx={idx} priority={idx < 4} />
-                ))}
+                {visible.map((ga, idx) => <GaCard key={ga.id} ga={ga} idx={idx} priority={idx < 4} />)}
               </div>
               {hasMore && (
                 <div className="mt-6 text-center">
