@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import HomeClient from './HomeClient';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 60;
 
 async function fetchHomeData() {
   const supabase = createClient(
