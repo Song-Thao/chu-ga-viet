@@ -1,14 +1,25 @@
-// SERVER COMPONENT — không có 'use client'
 import { createClient } from '@supabase/supabase-js';
 import HomeClient from './HomeClient';
 
-export const revalidate = 60;
+// Cache 5 phút — Vercel CDN giữ HTML, không fetch Supabase mỗi request
+export const revalidate = 300;
 
 async function fetchHomeData() {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      global: {
+        fetch: (url, options) =>
+          fetch(url, {
+            ...options,
+            // Cache fetch ở tầng Node.js 5 phút
+            next: { revalidate: 300 },
+          } as any),
+      },
+    }
   );
+
   const [cfgRes, bannerRes, moiDangRes, noiBatRes, vidRes] = await Promise.all([
     supabase.from('config').select('shopee_link').single(),
     supabase.from('banners').select('*').order('vi_tri'),
@@ -23,6 +34,7 @@ async function fetchHomeData() {
       .eq('status', 'active').not('youtube_url', 'is', null).neq('youtube_url', '')
       .order('like_count', { ascending: false }).limit(6),
   ]);
+
   return {
     shopeeLink: cfgRes.data?.shopee_link || 'https://s.shopee.vn/AKVzuqq0dk',
     banners: bannerRes.data || [],
