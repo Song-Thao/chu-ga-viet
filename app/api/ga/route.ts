@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 export const maxDuration = 30;
 
 // Cache response 60 giây — giảm tải Supabase
-export const revalidate = 60;
+export const revalidate = 3600;
 
 function getSupabase() {
   return createClient(
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       {
         headers: {
           // Cache trên CDN Vercel 60s, stale thêm 300s
-          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+          'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
         },
       }
     );
