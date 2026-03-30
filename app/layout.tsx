@@ -27,13 +27,7 @@ export const metadata: Metadata = {
     siteName: 'Chợ Gà Việt',
     title: 'Chợ Gà Việt – Mua Bán Gà Chọi Toàn Quốc',
     description: 'Cộng đồng mua bán, định giá gà chọi bằng AI. 92 loại vảy chuẩn, giao lưu sư kê toàn quốc.',
-    images: [
-      {
-        url: '/og-image.png',
-        width: 1200,
-        height: 630,
-      },
-    ],
+    images: [{ url: '/og-image.png', width: 1200, height: 630 }],
   },
   twitter: {
     card: 'summary_large_image',
@@ -53,6 +47,9 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: BASE_URL,
+  },
+  verification: {
+    google: 'r4C1zVy-xhHPU4GRrXkFnA6k6oUr7RV30cvi2yD48gE',
   },
 };
 
