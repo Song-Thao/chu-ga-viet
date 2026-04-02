@@ -1,12 +1,23 @@
 // SERVER COMPONENT
+import type { Metadata } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import ChoClient from './ChoClient';
 
 export const revalidate = 60;
 
-export const metadata = {
-  title: 'Cho Ga - Mua Ban Ga Choi Toan Quoc',
-  description: 'Hang ngan con ga choi dang ban: ga don, ga cua, ga tre, ga noi.',
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://chu-ga-viet.netlify.app';
+
+export const metadata: Metadata = {
+  title: 'Chợ Gà – Mua Bán Gà Chọi Toàn Quốc',
+  description: 'Hàng nghìn con gà chọi đang bán: gà đòn, gà cựa, gà tre, gà nội. Tìm gà chọi chất lượng tại Chợ Gà Việt.',
+  keywords: ['mua bán gà chọi', 'gà đòn', 'gà cựa', 'gà tre', 'gà nội', 'chợ gà'],
+  openGraph: {
+    title: 'Chợ Gà – Mua Bán Gà Chọi Toàn Quốc',
+    description: 'Hàng nghìn con gà chọi đang bán: gà đòn, gà cựa, gà tre, gà nội.',
+    url: `${BASE_URL}/cho`,
+    type: 'website',
+  },
+  alternates: { canonical: `${BASE_URL}/cho` },
 };
 
 async function fetchGa() {

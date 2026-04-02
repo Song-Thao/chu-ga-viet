@@ -6,7 +6,7 @@ import MobileNav from '@/components/layout/MobileNav';
 import { ChatProvider } from '@/components/chat/ChatContext';
 import ChatPopupManager from '@/components/chat/ChatPopupManager';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://chu-ga-viet.vercel.app';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://chu-ga-viet.netlify.app';
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
