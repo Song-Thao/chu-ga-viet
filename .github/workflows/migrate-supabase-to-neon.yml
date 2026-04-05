@@ -1,0 +1,107 @@
+name: Migrate Supabase → Neon (One-time)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Gõ "MIGRATE" để xác nhận chạy migration'
+        required: true
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'MIGRATE'
+
+    steps:
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-17 2>/dev/null || \
+          sudo apt-get install -y postgresql-client
+
+      - name: Check pg_dump version
+        run: pg_dump --version
+
+      # ─── DUMP từ Supabase ────────────────────────────────────────
+      - name: Dump public schema from Supabase
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          pg_dump \
+            "postgresql://postgres:${{ secrets.SUPABASE_DB_PASSWORD }}@db.hynnamyrbciakjcyemrk.supabase.co:5432/postgres" \
+            --schema=public \
+            --no-owner \
+            --no-acl \
+            --no-privileges \
+            --format=plain \
+            --file=dump_public.sql \
+            --verbose 2>&1
+
+          echo ""
+          echo "✅ Dump xong. Size: $(du -sh dump_public.sql | cut -f1)"
+          echo "--- Preview 30 dòng đầu ---"
+          head -30 dump_public.sql
+
+      - name: Upload dump as artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-dump
+          path: dump_public.sql
+          retention-days: 7
+
+      # ─── IMPORT vào Neon ─────────────────────────────────────────
+      - name: Prepare dump for Neon (strip Supabase-specific extensions)
+        run: |
+          # Bỏ extensions Supabase-only mà Neon không có
+          sed -i '/^CREATE EXTENSION IF NOT EXISTS "pg_graphql"/d' dump_public.sql
+          sed -i '/^CREATE EXTENSION IF NOT EXISTS "pg_net"/d' dump_public.sql
+          sed -i '/^CREATE EXTENSION IF NOT EXISTS "pg_stat_monitor"/d' dump_public.sql
+          sed -i '/^COMMENT ON EXTENSION/d' dump_public.sql
+          # Bỏ references tới auth.uid() trong RLS (sẽ setup lại sau)
+          sed -i '/^ALTER TABLE.*ENABLE ROW LEVEL SECURITY/d' dump_public.sql
+          sed -i '/^CREATE POLICY/,/;/d' dump_public.sql
+
+          echo "✅ Đã clean dump. Size sau clean: $(du -sh dump_public.sql | cut -f1)"
+
+      - name: Import into Neon
+        run: |
+          echo "Bắt đầu import vào Neon..."
+          psql "${{ secrets.NEON_CONNECTION_STRING }}" \
+            --file=dump_public.sql \
+            --echo-errors \
+            2>&1 | tee import_log.txt || true
+
+          echo ""
+          echo "--- Import log (errors only) ---"
+          grep -i "error\|fatal" import_log.txt || echo "Không có lỗi nghiêm trọng"
+
+      # ─── VERIFY ──────────────────────────────────────────────────
+      - name: Verify migration
+        run: |
+          echo "=== Tables trong Neon ==="
+          psql "${{ secrets.NEON_CONNECTION_STRING }}" -c "
+            SELECT tablename,
+                   (SELECT count(*) FROM information_schema.columns
+                    WHERE table_name = t.tablename AND table_schema = 'public') as columns
+            FROM pg_tables t
+            WHERE schemaname = 'public'
+            ORDER BY tablename;
+          "
+
+          echo ""
+          echo "=== Row counts ==="
+          psql "${{ secrets.NEON_CONNECTION_STRING }}" -c "
+            SELECT schemaname, tablename,
+                   n_live_tup as rows
+            FROM pg_stat_user_tables
+            WHERE schemaname = 'public'
+            ORDER BY n_live_tup DESC;
+          "
+
+      - name: Upload import log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: import-log
+          path: import_log.txt
+          retention-days: 3
