@@ -9,8 +9,8 @@ export const revalidate = 3600;
 
 function getSupabase() {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key'
   );
 }
 
@@ -74,13 +74,13 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     const supabase = authHeader
       ? createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
           { global: { headers: { Authorization: authHeader } } }
         )
       : createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+          (process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) || 'placeholder-anon-key'
         );
 
     // 1. Lưu gà

@@ -1,23 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import HomeClient from './HomeClient';
 
-// Cache 5 phút — Vercel CDN giữ HTML, không fetch Supabase mỗi request
+// ISR: regenerate trang mỗi 5 phút
 export const revalidate = 300;
 
 async function fetchHomeData() {
   const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: {
-        fetch: (url, options) =>
-          fetch(url, {
-            ...options,
-            // Cache fetch ở tầng Node.js 5 phút
-            next: { revalidate: 300 },
-          } as any),
-      },
-    }
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
   );
 
   const [cfgRes, bannerRes, moiDangRes, noiBatRes, vidRes] = await Promise.all([

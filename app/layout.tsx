@@ -6,7 +6,7 @@ import MobileNav from '@/components/layout/MobileNav';
 import { ChatProvider } from '@/components/chat/ChatContext';
 import ChatPopupManager from '@/components/chat/ChatPopupManager';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://chu-ga-viet.netlify.app';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://chugaviet.netlify.app';
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
@@ -59,14 +59,33 @@ export const viewport: Viewport = {
   themeColor: '#8B1A1A',
 };
 
+const websiteJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'Chợ Gà Việt',
+  url: BASE_URL,
+  description: 'Cộng đồng mua bán, định giá gà chọi bằng AI. Xem tướng gà, 92 loại vảy chuẩn, giao lưu anh em sư kê toàn quốc.',
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: {
+      '@type': 'EntryPoint',
+      urlTemplate: `${BASE_URL}/cho?q={search_term_string}`,
+    },
+    'query-input': 'required name=search_term_string',
+  },
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi">
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://img.youtube.com" />
         <link rel="dns-prefetch" href="https://ui-avatars.com" />
+        <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+        />
       </head>
       <body className="bg-gray-100 min-h-screen">
         <ChatProvider>

@@ -851,6 +851,7 @@ export default function CongDongPage() {
   const [showPopup, setShowPopup] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const [sortBy, setSortBy] = useState<'newest' | 'hot'>('newest');
@@ -890,7 +891,12 @@ export default function CongDongPage() {
       ? query.order('created_at', { ascending: false })
       : query.order('like_count', { ascending: false });
     const { data, error } = await query.range(from, to);
-    if (error) { console.error(error.message); setLoading(false); setLoadingMore(false); return; }
+    if (error) {
+      console.error(error.message);
+      if (pageNum === 0) setFetchError(true);
+      setLoading(false); setLoadingMore(false); return;
+    }
+    setFetchError(false);
     if (data && data.length > 0) {
       const userIds = [...new Set(data.map((p: any) => p.user_id))];
       const { data: profilesData } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', userIds);
@@ -1071,6 +1077,19 @@ export default function CongDongPage() {
             <div style={{ background: '#fff', padding: 28, textAlign: 'center', color: '#8a8d91', fontSize: 13 }}>
               <div style={{ width: 28, height: 28, border: '3px solid #e4e6ea', borderTop: '3px solid #c0392b', borderRadius: '50%', margin: '0 auto 8px', animation: 'spin 0.8s linear infinite' }} />
               Đang tải bài viết...
+            </div>
+          )}
+
+          {!loading && fetchError && (
+            <div style={{ background: '#fff', padding: 32, textAlign: 'center', borderRadius: 10 }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>⚠️</div>
+              <p style={{ color: '#555', marginBottom: 12, fontSize: 14 }}>Không tải được bài viết. Kiểm tra kết nối và thử lại.</p>
+              <button
+                onClick={() => { setPosts([]); setPage(0); setHasMore(true); fetchPosts(0, true); }}
+                style={{ background: '#c0392b', color: '#fff', border: 'none', borderRadius: 7, padding: '9px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
+              >
+                Tải lại
+              </button>
             </div>
           )}
 

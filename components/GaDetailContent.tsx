@@ -360,6 +360,7 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
   const [aiData, setAiData] = useState<any>(null);
   const [nguoiBan, setNguoiBan] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchFailed, setFetchFailed] = useState(false);
   const [anhChinh, setAnhChinh] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [comment, setComment] = useState('');
@@ -401,7 +402,7 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
         setComments(cmts || []);
         if (!isModal) await supabase.from('ga').update({ view_count: (gaRaw.view_count || 0) + 1 }).eq('id', gaId);
       }
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error(err); setFetchFailed(true); }
     finally { setLoading(false); }
   }
 
@@ -508,8 +509,23 @@ export default function GaDetailContent({ gaId, isModal = false, onClose }: GaDe
   if (!gaData) return (
     <div className="text-center py-20">
       <div className="text-5xl mb-4">🐓</div>
-      <div className="font-bold text-gray-600">Không tìm thấy gà này</div>
-      <Link href="/cho" className="mt-4 inline-block text-[#8B1A1A] hover:underline">← Về chợ</Link>
+      {fetchFailed ? (
+        <>
+          <div className="font-bold text-gray-600 mb-2">Không tải được thông tin gà</div>
+          <p className="text-sm text-gray-500 mb-4">Kiểm tra kết nối và thử lại.</p>
+          <button
+            onClick={() => { setFetchFailed(false); setLoading(true); fetchGa(); }}
+            className="bg-[#8B1A1A] text-white font-bold px-5 py-2 rounded-xl hover:bg-[#6B0F0F] transition text-sm"
+          >
+            Thử lại
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="font-bold text-gray-600">Không tìm thấy gà này</div>
+          <Link href="/cho" className="mt-4 inline-block text-[#8B1A1A] hover:underline">← Về chợ</Link>
+        </>
+      )}
     </div>
   );
 

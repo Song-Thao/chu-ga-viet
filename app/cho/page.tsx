@@ -5,7 +5,7 @@ import ChoClient from './ChoClient';
 
 export const revalidate = 60;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://chu-ga-viet.netlify.app';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://chugaviet.netlify.app';
 
 export const metadata: Metadata = {
   title: 'Chợ Gà – Mua Bán Gà Chọi Toàn Quốc',
@@ -23,8 +23,8 @@ export const metadata: Metadata = {
 async function fetchGa() {
   try {
     const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key'
     );
     const { data } = await supabase
       .from('ga')
@@ -52,5 +52,29 @@ async function fetchGa() {
 
 export default async function ChoPage() {
   const initialData = await fetchGa();
-  return <ChoClient initialData={initialData} />;
+
+  const itemListJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'Danh sách gà chọi đang bán',
+    description: 'Hàng nghìn con gà chọi đang bán: gà đòn, gà cựa, gà tre, gà nội.',
+    url: `${BASE_URL}/cho`,
+    numberOfItems: initialData.length,
+    itemListElement: initialData.slice(0, 10).map((ga: any, index: number) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      url: `${BASE_URL}/ga/${ga.id}`,
+      name: ga.ten || 'Gà chọi',
+    })),
+  };
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }}
+      />
+      <ChoClient initialData={initialData} />
+    </>
+  );
 }
