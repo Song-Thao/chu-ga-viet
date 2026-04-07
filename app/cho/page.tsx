@@ -5,7 +5,7 @@ import ChoClient from './ChoClient';
 
 export const revalidate = 60;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://chugaviet.netlify.app';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://ai-ga-chat.netlify.app';
 
 export const metadata: Metadata = {
   title: 'Chợ Gà – Mua Bán Gà Chọi Toàn Quốc',

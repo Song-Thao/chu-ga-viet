@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import ThuVienDetailClient from './ThuVienDetailClient';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://chugaviet.netlify.app';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://ai-ga-chat.netlify.app';
 
 async function getPost(id: string) {
   const supabase = createClient(

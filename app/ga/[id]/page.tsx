@@ -4,7 +4,7 @@ import GaDetailContent from '@/components/GaDetailContent';
 
 export const dynamic = 'force-dynamic';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://chugaviet.netlify.app';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://ai-ga-chat.netlify.app';
 
 async function getGa(id: string) {
   const supabase = createClient(
