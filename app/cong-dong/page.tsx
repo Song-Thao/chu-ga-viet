@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 // ============================================================
 // HELPERS
@@ -842,6 +843,7 @@ function CreatePostModal({ user, userAvatar, userName, onSubmit, onClose }: {
 // MAIN PAGE
 // ============================================================
 export default function CongDongPage() {
+  const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [comments, setComments] = useState<Record<string, Comment[]>>({});
@@ -935,7 +937,7 @@ export default function CongDongPage() {
   }
 
   async function handleSubmitPost(content: string, youtube: string, images: File[]) {
-    if (!user) return;
+    if (!user) { router.push('/login'); return; }
     let cleanYoutube = youtube.trim();
     if (cleanYoutube.includes('<iframe')) {
       const m = cleanYoutube.match(/src=["']([^"']+)["']/);
@@ -969,7 +971,7 @@ export default function CongDongPage() {
   }
 
   async function likePost(postId: string) {
-    if (!user) return;
+    if (!user) { router.push('/login'); return; }
     const already = likedPosts[postId];
     setLikedPosts(prev => ({ ...prev, [postId]: !already }));
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, like_count: (p.like_count ?? 0) + (already ? -1 : 1) } : p));
@@ -978,7 +980,8 @@ export default function CongDongPage() {
 
   async function submitComment(postId: string) {
     const text = commentInputs[postId]?.trim();
-    if (!text || !user) return;
+    if (!user) { router.push('/login'); return; }
+    if (!text) return;
     const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: user.id, content: text })
       .select('*, profiles(full_name, avatar_url)').single();
     if (data) {
@@ -1000,7 +1003,7 @@ export default function CongDongPage() {
   }
 
   async function reportPost(postId: string) {
-    if (!user) return;
+    if (!user) { router.push('/login'); return; }
     await supabase.rpc('report_post', { post_id: postId });
     alert('Đã báo cáo. Cảm ơn!');
   }
