@@ -35,7 +35,7 @@ export default function LoginPage() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/` },
+      options: { redirectTo: `${process.env.NEXT_PUBLIC_BASE_URL ?? window.location.origin}/` },
     });
     if (error) {
       setError('Google login chưa được kích hoạt. Vui lòng dùng email/mật khẩu hoặc liên hệ admin.');

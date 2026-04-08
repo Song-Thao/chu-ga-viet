@@ -36,7 +36,7 @@ async function fetchHomeData() {
       .eq('status', 'active').order('view_count', { ascending: false }).limit(4)
       .then(r => r.data ?? [])),
     withRetry(() => supabase.from('posts')
-      .select('id,noi_dung,youtube_url,like_count,likes,comment_count')
+      .select('id,noi_dung,youtube_url,like_count,comment_count')
       .eq('status', 'active').not('youtube_url', 'is', null).neq('youtube_url', '')
       .order('like_count', { ascending: false }).limit(6)
       .then(r => r.data ?? [])),

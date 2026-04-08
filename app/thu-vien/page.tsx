@@ -12,7 +12,7 @@ async function fetchPosts() {
     );
     const { data } = await supabase
       .from('posts')
-      .select('id, noi_dung, image_url, likes, like_count, comment_count, youtube_url, created_at, status, profiles(username, avatar_url)')
+      .select('id, noi_dung, image_url, like_count, comment_count, youtube_url, created_at, status, profiles(username, avatar_url)')
       .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(30);

@@ -166,12 +166,11 @@ function GaCard({ ga, idx, priority = false }: { ga: any; idx: number; priority?
       {showModal && createPortal(<GaQuickModal ga={ga} onClose={() => setShowModal(false)} />, document.body)}
       <div onClick={() => setShowModal(true)} onMouseEnter={() => router.prefetch(`/ga/${ga.id}`)}
         className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer">
-        <div className="relative h-36 w-full bg-gray-100">
-          {!imgLoaded && <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse z-10" />}
+        <div className="relative h-36 w-full bg-gray-200">
           {displayThumb ? (
             <Image src={displayThumb} alt={ga.ten} fill
               sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw"
-              className={`object-cover transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+              className={`object-cover transition-opacity duration-200 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
               priority={priority} loading={priority ? 'eager' : 'lazy'} onLoad={() => setImgLoaded(true)} />
           ) : (
             <div className={`${MauNen[idx % MauNen.length]} h-full flex items-center justify-center text-5xl`}>🐓</div>
