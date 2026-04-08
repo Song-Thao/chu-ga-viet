@@ -6,9 +6,6 @@
   NODE_VERSION = "20"
   NEXT_TELEMETRY_DISABLED = "1"
 
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
-
 # Cache static assets forever (Next.js adds content hash to filenames)
 [[headers]]
   for = "/_next/static/*"
