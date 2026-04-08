@@ -31,10 +31,16 @@ export default function LoginPage() {
   };
 
   const handleGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
+    setError('');
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/` },
     });
+    if (error) {
+      setError('Google login chưa được kích hoạt. Vui lòng dùng email/mật khẩu hoặc liên hệ admin.');
+      setLoading(false);
+    }
   };
 
   return (

@@ -20,34 +20,36 @@ export const metadata: Metadata = {
   alternates: { canonical: `${BASE_URL}/cho` },
 };
 
-async function fetchGa() {
-  try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key'
-    );
-    const { data } = await supabase
-      .from('ga')
-      .select(`
-        id,
-        ten,
-        loai_ga,
-        gia,
-        can_nang,
-        tuoi,
-        khu_vuc,
-        video_url,
-        created_at,
-        ga_images ( url, is_primary ),
-        ai_analysis ( total_score )
-      `)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(24);
-    return data ?? [];
-  } catch {
-    return [];
+async function fetchGa(retries = 3): Promise<any[]> {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key'
+  );
+  for (let i = 0; i < retries; i++) {
+    try {
+      const { data, error } = await supabase
+        .from('ga')
+        .select(`
+          id,
+          ten,
+          loai_ga,
+          gia,
+          can_nang,
+          tuoi,
+          khu_vuc,
+          video_url,
+          created_at,
+          ga_images ( url, is_primary ),
+          ai_analysis ( total_score )
+        `)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(24);
+      if (!error) return data ?? [];
+    } catch {}
+    if (i < retries - 1) await new Promise(r => setTimeout(r, 500 * (i + 1)));
   }
+  return [];
 }
 
 export default async function ChoPage() {
